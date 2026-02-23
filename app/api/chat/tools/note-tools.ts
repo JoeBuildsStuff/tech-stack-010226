@@ -2,6 +2,7 @@ import type { Anthropic } from '@anthropic-ai/sdk'
 
 import { createClient } from '@/lib/supabase/server'
 import { createComment, createThread, listThreads } from '@/components/tiptap/lib/comments'
+import { createUniqueSlug, slugToDocumentPath } from '@/app/dashboard/notes/note-path'
 
 const APP_SCHEMA = 'tech_stack_2026'
 const MAX_NOTE_CHARS = 20000
@@ -131,6 +132,95 @@ export const notesGetNoteTool: Anthropic.Tool = {
     },
     required: ['noteId'],
   },
+}
+
+export const notesCreateNoteTool: Anthropic.Tool = {
+  name: 'notes_create_note',
+  description:
+    'Create a new note for the current user. Returns the created note ID, metadata, and URL.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      title: {
+        type: 'string',
+        description: 'Optional title for the new note. Defaults to "My Note".',
+      },
+      content: {
+        type: 'string',
+        description: 'Optional initial content for the new note. Defaults to empty string.',
+      },
+    },
+    required: [],
+  },
+}
+
+export async function executeNotesCreateNote(parameters: Record<string, unknown>): ToolResult {
+  try {
+    const auth = await getAuthenticatedContext()
+    if ('error' in auth) {
+      return { success: false, error: auth.error }
+    }
+
+    const rawTitle = typeof parameters.title === 'string' ? parameters.title.trim() : ''
+    const title = rawTitle.length > 0 ? rawTitle : 'My Note'
+    const content = typeof parameters.content === 'string' ? parameters.content : ''
+
+    const { data: existingNotes, error: existingError } = await auth.supabase
+      .schema(APP_SCHEMA)
+      .from('notes')
+      .select('document_path')
+      .eq('user_id', auth.userId)
+
+    if (existingError) {
+      return { success: false, error: existingError.message }
+    }
+
+    const documentPath = slugToDocumentPath(
+      createUniqueSlug(
+        title,
+        (existingNotes ?? [])
+          .map((note) => note.document_path)
+          .filter((value): value is string => typeof value === 'string'),
+      ),
+    )
+
+    const { data: created, error: createError } = await auth.supabase
+      .schema(APP_SCHEMA)
+      .from('notes')
+      .insert({
+        user_id: auth.userId,
+        title,
+        content,
+        document_path: documentPath,
+        sort_order: (existingNotes?.length ?? 0) + 1,
+      })
+      .select('id, title, content, created_at, updated_at')
+      .single()
+
+    if (createError || !created) {
+      return { success: false, error: createError?.message ?? 'Failed to create note' }
+    }
+
+    return {
+      success: true,
+      data: {
+        note: {
+          id: created.id,
+          title: created.title ?? 'Untitled',
+          content: created.content ?? '',
+          createdAt: created.created_at,
+          updatedAt: created.updated_at,
+          url: noteUrl(created.id),
+        },
+      },
+    }
+  } catch (error) {
+    console.error('notes_create_note execution error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    }
+  }
 }
 
 export async function executeNotesGetNote(parameters: Record<string, unknown>): ToolResult {

@@ -5,12 +5,15 @@ This directory contains tool definitions and execution logic for the chat API.
 ## Structure
 
 - `index.ts` - Exports all enabled tools and executor mapping
-- `note-tools.ts` - Note-specific tools (read/update note, read/add/reply comments)
+- `note-tools.ts` - Note-specific tools (create/read/update note, read/add/reply comments)
 - `template-tool.ts` - Optional template for creating additional tools
 - `README.md` - Documentation
 
 ## Enabled Tools
 
+- `notes_create_note`
+  - Input: optional `title`, `content`
+  - Output: created note record and `/dashboard/notes/:id` URL
 - `notes_get_note`
   - Input: `noteId`, optional `maxChars`
   - Output: note title/content metadata and `/dashboard/notes/:id` URL
