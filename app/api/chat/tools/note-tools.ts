@@ -1,4 +1,6 @@
 import type { Anthropic } from '@anthropic-ai/sdk'
+import { marked } from 'marked'
+import sanitizeHtml from 'sanitize-html'
 
 import { createClient } from '@/lib/supabase/server'
 import { createComment, createThread, listThreads } from '@/components/tiptap/lib/comments'
@@ -8,6 +10,40 @@ const APP_SCHEMA = 'tech_stack_2026'
 const MAX_NOTE_CHARS = 20000
 const MAX_COMMENT_CHARS = 4000
 const MAX_THREADS = 200
+const MARKDOWN_HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
+const ALLOWED_TEXT_ALIGN = [/^left$/, /^right$/, /^center$/, /^justify$/]
+const NOTE_ALLOWED_TAGS = [
+  'p',
+  'br',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'pre',
+  'code',
+  'ul',
+  'ol',
+  'li',
+  'strong',
+  'em',
+  's',
+  'u',
+  'a',
+  'hr',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'th',
+  'td',
+  'img',
+  'div',
+  'span',
+]
 
 type ToolResult = Promise<{ success: boolean; data?: unknown; error?: string }>
 
@@ -56,6 +92,84 @@ function stripHtml(content: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function looksLikeHtml(content: string): boolean {
+  return MARKDOWN_HTML_TAG_PATTERN.test(content)
+}
+
+async function normalizeNoteContent(content: string): Promise<string> {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  const renderedHtml = looksLikeHtml(trimmed)
+    ? trimmed
+    : await marked.parse(trimmed, { gfm: true, breaks: true })
+
+  return sanitizeHtml(renderedHtml, {
+    allowedTags: NOTE_ALLOWED_TAGS,
+    allowedAttributes: {
+      a: ['href', 'name', 'target', 'rel'],
+      img: ['src', 'alt', 'title', 'width', 'height', 'class'],
+      pre: ['class'],
+      code: ['class'],
+      p: ['style'],
+      h1: ['style'],
+      h2: ['style'],
+      h3: ['style'],
+      h4: ['style'],
+      h5: ['style'],
+      h6: ['style'],
+      th: ['colspan', 'rowspan'],
+      td: ['colspan', 'rowspan'],
+      div: [
+        'class',
+        'data-type',
+        'data-src',
+        'data-filename',
+        'data-file-size',
+        'data-file-type',
+        'data-upload-status',
+        'data-preview-type',
+      ],
+      span: ['class'],
+    },
+    allowedStyles: {
+      p: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h1: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h2: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h3: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h4: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h5: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+      h6: {
+        'text-align': ALLOWED_TEXT_ALIGN,
+      },
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'data'],
+    allowedSchemesByTag: {
+      img: ['http', 'https', 'data'],
+    },
+    transformTags: {
+      a: sanitizeHtml.simpleTransform('a', {
+        rel: 'noopener noreferrer',
+        target: '_blank',
+      }),
+    },
+  })
 }
 
 async function getAuthenticatedContext(): Promise<
@@ -147,7 +261,8 @@ export const notesCreateNoteTool: Anthropic.Tool = {
       },
       content: {
         type: 'string',
-        description: 'Optional initial content for the new note. Defaults to empty string.',
+        description:
+          'Optional initial content for the new note. Markdown and HTML are accepted; content is saved as sanitized HTML.',
       },
     },
     required: [],
@@ -163,7 +278,8 @@ export async function executeNotesCreateNote(parameters: Record<string, unknown>
 
     const rawTitle = typeof parameters.title === 'string' ? parameters.title.trim() : ''
     const title = rawTitle.length > 0 ? rawTitle : 'My Note'
-    const content = typeof parameters.content === 'string' ? parameters.content : ''
+    const rawContent = typeof parameters.content === 'string' ? parameters.content : ''
+    const content = await normalizeNoteContent(rawContent)
 
     const { data: existingNotes, error: existingError } = await auth.supabase
       .schema(APP_SCHEMA)
@@ -389,7 +505,8 @@ export const notesUpdateNoteTool: Anthropic.Tool = {
       },
       content: {
         type: 'string',
-        description: 'Updated full note content (replaces existing content).',
+        description:
+          'Updated full note content (replaces existing content). Markdown and HTML are accepted; content is saved as sanitized HTML.',
       },
     },
     required: ['noteId'],
@@ -434,7 +551,7 @@ export async function executeNotesUpdateNote(parameters: Record<string, unknown>
     }
 
     if (contentProvided) {
-      payload.content = parameters.content as string
+      payload.content = await normalizeNoteContent(parameters.content as string)
     }
 
     const { data: updated, error } = await auth.supabase
