@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { ImageIcon, AlertCircle } from 'lucide-react'
 import Spinner from '@/components/ui/spinner'
 
-export const CustomImageView = ({ node, selected }: ReactNodeViewProps) => {
+export const CustomImageView = ({ node, selected, updateAttributes }: ReactNodeViewProps) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,22 +20,20 @@ export const CustomImageView = ({ node, selected }: ReactNodeViewProps) => {
   const width = localWidth !== null ? localWidth : (node.attrs.width || 'auto')
   const height = node.attrs.height || 'auto'
 
-  // Initialize localWidth from stored data attribute on mount
+  // Keep local width in sync with node attrs so persisted values restore on refresh.
   useEffect(() => {
-    if (wrapperRef.current) {
-      const storedWidth = wrapperRef.current.getAttribute('data-image-width')
-      if (storedWidth && localWidth === null) {
-        setLocalWidth(parseInt(storedWidth, 10))
+    if (typeof node.attrs.width === 'number') {
+      setLocalWidth(node.attrs.width)
+      return
+    }
+
+    if (typeof node.attrs.width === 'string') {
+      const parsed = parseInt(node.attrs.width, 10)
+      if (!Number.isNaN(parsed)) {
+        setLocalWidth(parsed)
       }
     }
-  }, [localWidth])
-
-  // Store width in data attribute when it changes
-  useEffect(() => {
-    if (wrapperRef.current && localWidth !== null) {
-      wrapperRef.current.setAttribute('data-image-width', localWidth.toString())
-    }
-  }, [localWidth])
+  }, [node.attrs.width])
 
   useEffect(() => {
     const fetchImageUrl = async () => {
@@ -109,9 +107,10 @@ export const CustomImageView = ({ node, selected }: ReactNodeViewProps) => {
 
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false)
-    // Don't call updateAttributes - it triggers node replacement and deletion
-    // The localWidth state will persist the visual change
-  }, [])
+    if (localWidth !== null) {
+      updateAttributes({ width: Math.round(localWidth) })
+    }
+  }, [localWidth, updateAttributes])
 
   useEffect(() => {
     if (isResizing) {
@@ -166,8 +165,8 @@ export const CustomImageView = ({ node, selected }: ReactNodeViewProps) => {
   }
 
   return (
-    <NodeViewWrapper>
-      <div ref={wrapperRef} className=" inline-block">
+    <NodeViewWrapper className="block">
+      <div ref={wrapperRef} className="relative inline-block max-w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           ref={imageRef}

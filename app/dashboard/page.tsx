@@ -1,8 +1,8 @@
 export default function Page() {
   return (
-    <div className="flex flex-col gap-4 h-full w-full">
+    <div className="flex flex-col gap-2 h-full w-full">
       {/* KPI Header Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="h-36 w-full rounded-lg bg-secondary/50" />
         <div className="h-36 w-full rounded-lg bg-secondary/50" />
         <div className="h-36 w-full rounded-lg bg-secondary/50" />

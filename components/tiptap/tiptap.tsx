@@ -164,11 +164,38 @@ const Tiptap = ({
         : []),
 
       Image.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            width: {
+              default: null,
+              parseHTML: (element) => {
+                const width = element.getAttribute("width");
+                if (!width) return null;
+                const parsed = parseInt(width, 10);
+                return Number.isNaN(parsed) ? null : parsed;
+              },
+              renderHTML: (attributes) =>
+                attributes.width ? { width: String(attributes.width) } : {},
+            },
+            height: {
+              default: null,
+              parseHTML: (element) => {
+                const height = element.getAttribute("height");
+                if (!height) return null;
+                const parsed = parseInt(height, 10);
+                return Number.isNaN(parsed) ? null : parsed;
+              },
+              renderHTML: (attributes) =>
+                attributes.height ? { height: String(attributes.height) } : {},
+            },
+          };
+        },
         addNodeView() {
           return ReactNodeViewRenderer(CustomImageView);
         },
       }).configure({
-        inline: true,
+        inline: false,
         allowBase64: false,
         HTMLAttributes: {
           class: "tiptap-image",
