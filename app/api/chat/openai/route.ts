@@ -297,7 +297,7 @@ If a tool responds with a url to a record, include it in your response using mar
 
     while (maxIterations > 0) {
       const response = await openai.chat.completions.create({
-        model: model || 'gpt-5',
+        model: model || 'gpt-5.4',
         messages: currentMessages,
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: tools.length > 0 ? 'auto' : undefined,

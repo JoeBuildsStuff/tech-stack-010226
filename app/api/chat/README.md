@@ -27,7 +27,7 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 Users can select from different AI models in the chat interface:
 
 - **Anthropic Models**: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`
-- **OpenAI Models**: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
+- **OpenAI Models**: `gpt-5.4`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
 - **Cerebras Models**: `gpt-oss-120b`
 
 ## Reasoning Effort Control

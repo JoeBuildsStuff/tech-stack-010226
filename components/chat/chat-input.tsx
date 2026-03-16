@@ -39,6 +39,41 @@ export interface Attachment {
   type: string;
 }
 
+const MODEL_OPTIONS = [
+  {
+    value: "claude-haiku-4-5",
+    label: "Haiku 4.5",
+    menuLabel: "Haiku 4.5 ($1 / $5)",
+  },
+  {
+    value: "claude-sonnet-4-6",
+    label: "Sonnet 4.6",
+    menuLabel: "Sonnet 4.6 ($3 / $15)",
+  },
+  {
+    value: "claude-opus-4-6",
+    label: "Opus 4.6",
+    menuLabel: "Opus 4.6 ($5 / $25)",
+  },
+  {
+    value: "gpt-oss-120b",
+    label: "GPT-OSS-120B",
+    menuLabel: "GPT-OSS-120B",
+  },
+  { value: "gpt-5.4", label: "GPT-5.4", menuLabel: "GPT-5.4 ($2.50 / $15)" },
+  { value: "gpt-5", label: "GPT-5", menuLabel: "GPT-5 ($1.25 / $10)" },
+  {
+    value: "gpt-5-mini",
+    label: "GPT-5 Mini",
+    menuLabel: "GPT-5 Mini ($0.25 / $2)",
+  },
+  {
+    value: "gpt-5-nano",
+    label: "GPT-5 Nano",
+    menuLabel: "GPT-5 Nano ($0.05 / $0.40)",
+  },
+] as const;
+
 export function ChatInput() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -53,6 +88,9 @@ export function ChatInput() {
   const [reasoningEffort, setReasoningEffort] = useState<
     "low" | "medium" | "high"
   >("low");
+  const selectedModelLabel =
+    MODEL_OPTIONS.find((option) => option.value === selectedModel)?.label ??
+    "Model";
 
   const handleSend = async () => {
     const trimmedInput = input.trim();
@@ -342,42 +380,20 @@ export function ChatInput() {
                   size="sm"
                   className="w-fit border-none text-muted-foreground shadow-none font-light text-xs bg-input/40"
                 >
-                  <SelectValue placeholder="Model" />
+                  <SelectValue placeholder="Model">
+                    {selectedModelLabel}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    value="claude-haiku-4-5"
-                    className="font-light text-xs"
-                  >
-                    Haiku 4.5
-                  </SelectItem>
-                  <SelectItem
-                    value="claude-sonnet-4-6"
-                    className="font-light text-xs"
-                  >
-                    Sonnet 4.6
-                  </SelectItem>
-                  <SelectItem
-                    value="claude-opus-4-6"
-                    className="font-light text-xs"
-                  >
-                    Opus 4.6
-                  </SelectItem>
-                  <SelectItem
-                    value="gpt-oss-120b"
-                    className="font-light text-xs"
-                  >
-                    GPT-OSS-120B
-                  </SelectItem>
-                  <SelectItem value="gpt-5" className="font-light text-xs">
-                    GPT-5
-                  </SelectItem>
-                  <SelectItem value="gpt-5-mini" className="font-light text-xs">
-                    GPT-5 Mini
-                  </SelectItem>
-                  <SelectItem value="gpt-5-nano" className="font-light text-xs">
-                    GPT-5 Nano
-                  </SelectItem>
+                  {MODEL_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      className="font-light text-xs"
+                    >
+                      {option.menuLabel}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
