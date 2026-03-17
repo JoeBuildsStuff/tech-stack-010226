@@ -246,12 +246,6 @@ const Tiptap = ({
   });
 
   useEffect(() => {
-    if (commentsEnabled) {
-      setEffectiveShowComments(true);
-    }
-  }, [commentsEnabled, setEffectiveShowComments]);
-
-  useEffect(() => {
     if (!commentsEnabled) {
       return;
     }

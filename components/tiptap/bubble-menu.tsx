@@ -2,6 +2,7 @@
 
 import { Editor, useEditorState } from "@tiptap/react";
 import { BubbleMenu as TiptapBubbleMenu } from "@tiptap/react/menus";
+import { useCallback } from "react";
 import {
   Strikethrough,
   Heading1,
@@ -83,6 +84,12 @@ const BubbleMenuComponent = ({
     chain.setTextAlign(alignment).run();
   };
 
+  const bubbleMenuRef = useCallback((node: HTMLDivElement | null) => {
+    if (node) {
+      node.style.zIndex = "20";
+    }
+  }, []);
+
   const handleRequestComment = () => {
     const { from, to, empty } = editor.state.selection;
     if (empty || to <= from) {
@@ -109,6 +116,7 @@ const BubbleMenuComponent = ({
 
   return (
     <TiptapBubbleMenu
+      ref={bubbleMenuRef}
       className=""
       options={{
         offset: 6,
