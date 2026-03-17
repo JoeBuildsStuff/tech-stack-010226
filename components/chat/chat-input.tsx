@@ -84,7 +84,7 @@ export function ChatInput() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
-  const [selectedModel, setSelectedModel] = useState("gpt-oss-120b");
+  const [selectedModel, setSelectedModel] = useState("gpt-5");
   const [reasoningEffort, setReasoningEffort] = useState<
     "low" | "medium" | "high"
   >("low");
