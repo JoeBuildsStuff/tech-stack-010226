@@ -1,11 +1,9 @@
 "use server";
 
+import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { Json } from "@/types/supabase";
-
-/** Schema used for chat tables (agnostic tech stack). */
-const CHAT_SCHEMA = "tech_stack_2026";
 
 /** Storage buckets for chat attachments. Create in Supabase Dashboard → Storage if missing. */
 const CHAT_IMAGES_BUCKET = "chat-images";
@@ -31,7 +29,7 @@ export async function createChatSession(params: CreateSessionParams = {}) {
   };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_sessions")
     .insert(payload)
     .select("id, title, created_at, updated_at, context")
@@ -49,7 +47,7 @@ export async function updateChatSessionTitle(sessionId: string, title: string) {
   if (!userData.user) return { error: "Not authenticated" };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_sessions")
     .update({ title })
     .eq("id", sessionId)
@@ -69,7 +67,7 @@ export async function deleteChatSession(sessionId: string) {
 
   // 1) Fetch all attachment storage paths for this session
   const { data: attachments, error: fetchError } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_attachments")
     .select("storage_path, mime_type, chat_messages!inner(session_id)")
     .eq("chat_messages.session_id", sessionId);
@@ -103,7 +101,7 @@ export async function deleteChatSession(sessionId: string) {
 
   // 4) Delete the session (cascades to messages/attachments rows)
   const { error: deleteError } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_sessions")
     .delete()
     .eq("id", sessionId)
@@ -120,7 +118,7 @@ export async function listChatSessions() {
   if (!userData.user) return { error: "Not authenticated" };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_sessions")
     .select(
       `
@@ -190,7 +188,7 @@ export async function addChatMessage(params: AddMessageParams) {
   };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_messages")
     .insert(insertData)
     .select("id, created_at")
@@ -230,7 +228,7 @@ export async function addChatAttachments(
   }));
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_attachments")
     .insert(rows)
     .select("id, name, storage_path");
@@ -264,7 +262,7 @@ export async function addChatToolCalls(
   }));
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_tool_calls")
     .insert(rows)
     .select("id, name");
@@ -296,7 +294,7 @@ export async function addChatSuggestedActions(
   }));
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_suggested_actions")
     .insert(rows)
     .select("id, type, label");
@@ -311,7 +309,7 @@ export async function getChatMessages(sessionId: string) {
   if (!userData.user) return { error: "Not authenticated" };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_messages")
     .select(
       `
@@ -364,7 +362,7 @@ export async function setActiveVariant(params: SetActiveVariantParams) {
   };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_branch_state")
     .upsert(row, { onConflict: "session_id,user_message_id" })
     .select("id, active_index")
@@ -380,7 +378,7 @@ export async function getBranchState(sessionId: string) {
   if (!userData.user) return { error: "Not authenticated" };
 
   const { data, error } = await supabase
-    .schema(CHAT_SCHEMA)
+    .schema(APP_SCHEMA)
     .from("chat_branch_state")
     .select("user_message_id, active_index, signature, signatures")
     .eq("session_id", sessionId);

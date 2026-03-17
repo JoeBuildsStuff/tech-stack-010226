@@ -228,9 +228,8 @@ BEGIN
   END IF;
 END $$;
 
-CREATE OR REPLACE FUNCTION public.create_note_comment_thread_with_root(
+CREATE OR REPLACE FUNCTION tech_stack_2026.create_note_comment_thread_with_root(
   p_document_id uuid,
-  p_user_id uuid,
   p_anchor_from integer,
   p_anchor_to integer,
   p_anchor_exact text,
@@ -256,7 +255,7 @@ BEGIN
   )
   VALUES (
     p_document_id,
-    p_user_id,
+    auth.uid(),
     'unresolved',
     p_anchor_from,
     p_anchor_to,
@@ -273,7 +272,7 @@ BEGIN
   )
   VALUES (
     v_thread_id,
-    p_user_id,
+    auth.uid(),
     p_content
   );
 
@@ -281,7 +280,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.batch_update_note_comment_thread_anchors(
+CREATE OR REPLACE FUNCTION tech_stack_2026.batch_update_note_comment_thread_anchors(
   p_document_id uuid,
   p_anchors jsonb,
   p_now timestamptz DEFAULT now()
@@ -324,5 +323,5 @@ $$;
 GRANT ALL ON tech_stack_2026.notes TO anon, authenticated, service_role;
 GRANT ALL ON tech_stack_2026.comment_threads TO anon, authenticated, service_role;
 GRANT ALL ON tech_stack_2026.comments TO anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.create_note_comment_thread_with_root(uuid, uuid, integer, integer, text, text, text, text) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.batch_update_note_comment_thread_anchors(uuid, jsonb, timestamptz) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION tech_stack_2026.create_note_comment_thread_with_root(uuid, integer, integer, text, text, text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION tech_stack_2026.batch_update_note_comment_thread_anchors(uuid, jsonb, timestamptz) TO authenticated, service_role;

@@ -3,10 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { createClient } from "@/lib/supabase/server";
 import { createUniqueSlug, slugToDocumentPath } from "./note-path";
-
-const APP_SCHEMA = "tech_stack_2026";
 
 export async function createNoteAction() {
   const supabase = await createClient();

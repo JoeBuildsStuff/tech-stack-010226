@@ -1,8 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import { APP_SCHEMA } from "@/lib/supabase/app-schema"
 import { createClient } from "@/lib/supabase/server"
-
-const APP_SCHEMA = "tech_stack_2026"
 
 export type CommentRecord = {
   id: string
@@ -205,16 +204,17 @@ export async function createThread(input: {
   const supabase = await createClient()
   await assertDocumentOwnership(supabase, input.documentId, input.userId)
 
-  const { data, error } = await supabase.rpc("create_note_comment_thread_with_root", {
-    p_document_id: input.documentId,
-    p_user_id: input.userId,
-    p_anchor_from: input.anchorFrom,
-    p_anchor_to: input.anchorTo,
-    p_anchor_exact: input.anchorExact,
-    p_anchor_prefix: input.anchorPrefix,
-    p_anchor_suffix: input.anchorSuffix,
-    p_content: input.content,
-  })
+  const { data, error } = await supabase
+    .schema(APP_SCHEMA)
+    .rpc("create_note_comment_thread_with_root", {
+      p_document_id: input.documentId,
+      p_anchor_from: input.anchorFrom,
+      p_anchor_to: input.anchorTo,
+      p_anchor_exact: input.anchorExact,
+      p_anchor_prefix: input.anchorPrefix,
+      p_anchor_suffix: input.anchorSuffix,
+      p_content: input.content,
+    })
 
   if (error || !data) {
     throw error ?? new Error("Failed to create thread")
@@ -518,11 +518,13 @@ export async function updateThreadAnchors(input: {
   const supabase = await createClient()
   await assertDocumentOwnership(supabase, input.documentId, input.userId)
 
-  const { error } = await supabase.rpc("batch_update_note_comment_thread_anchors", {
-    p_document_id: input.documentId,
-    p_anchors: input.anchors,
-    p_now: new Date().toISOString(),
-  })
+  const { error } = await supabase
+    .schema(APP_SCHEMA)
+    .rpc("batch_update_note_comment_thread_anchors", {
+      p_document_id: input.documentId,
+      p_anchors: input.anchors,
+      p_now: new Date().toISOString(),
+    })
 
   if (error) {
     throw error

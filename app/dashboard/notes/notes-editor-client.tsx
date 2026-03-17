@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Tiptap from "@/components/tiptap/tiptap";
+import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { createClient } from "@/lib/supabase/client";
 import { Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,8 +22,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-const APP_SCHEMA = "tech_stack_2026";
 
 type NotesEditorClientProps = {
   noteId: string;

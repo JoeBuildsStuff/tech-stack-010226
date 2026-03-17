@@ -1,10 +1,8 @@
 "use server"
 
+import { APP_SCHEMA } from "@/lib/supabase/app-schema"
 import { createClient } from "@/lib/supabase/server"
 import type { DataTableState } from "@/lib/data-table"
-
-/** Schema used for saved_views (agnostic tech stack). */
-const SAVED_VIEWS_SCHEMA = "tech_stack_2026"
 
 export interface SavedViewRecord {
   id: string
@@ -41,7 +39,7 @@ export async function listSavedViews(
     }
 
     const { data, error } = await supabase
-      .schema(SAVED_VIEWS_SCHEMA)
+      .schema(APP_SCHEMA)
       .from("saved_views")
       .select("*")
       .eq("table_key", tableKey)
@@ -96,7 +94,7 @@ export async function saveView(
     if (viewId) {
       // Update existing view
       const { data, error } = await supabase
-        .schema(SAVED_VIEWS_SCHEMA)
+        .schema(APP_SCHEMA)
         .from("saved_views")
         .update({
           name,
@@ -130,7 +128,7 @@ export async function saveView(
     } else {
       // Create new view
       const { data, error } = await supabase
-        .schema(SAVED_VIEWS_SCHEMA)
+        .schema(APP_SCHEMA)
         .from("saved_views")
         .insert({
           table_key: tableKey,
@@ -186,7 +184,7 @@ export async function deleteView(
     }
 
     const { error } = await supabase
-      .schema(SAVED_VIEWS_SCHEMA)
+      .schema(APP_SCHEMA)
       .from("saved_views")
       .delete()
       .eq("id", viewId)

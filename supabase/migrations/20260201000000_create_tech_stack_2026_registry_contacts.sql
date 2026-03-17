@@ -22,5 +22,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA tech_stack_2026 GRANT ALL ON TABLES TO anon, 
 ALTER DEFAULT PRIVILEGES IN SCHEMA tech_stack_2026 GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 
 -- Expose schema to PostgREST (required for Supabase API access)
--- On Supabase hosted you can also add "tech_stack_2026" in Dashboard: Settings → API → Exposed schemas
-ALTER ROLE authenticator SET pgrst.db_schemas = 'public, tech_stack_2026';
+-- For shared Supabase projects, manage exposed schemas centrally in Dashboard:
+-- Settings → API → Exposed schemas.
+-- Do not overwrite pgrst.db_schemas from a template migration, or one project can hide another.

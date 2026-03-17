@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { Contact } from "./validations";
 import { PostgrestError } from "@supabase/supabase-js";
 import type { SortingState, ColumnFiltersState } from "@tanstack/react-table";
@@ -40,7 +41,7 @@ export async function getContacts(params?: GetContactsParams): Promise<{
 }> {
   const supabase = await createClient();
   let query = supabase
-    .schema("tech_stack_2026")
+    .schema(APP_SCHEMA)
     .from("registry_contacts")
     .select("*", { count: "exact" });
 

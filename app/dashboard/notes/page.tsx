@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { createClient } from "@/lib/supabase/server";
 import { NotesSortDropdown, type NotesSortKey } from "./notes-sort-dropdown";
 import { formatNoteIdBadge } from "./note-path";
@@ -16,8 +17,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilePlusCorner } from "lucide-react";
-
-const APP_SCHEMA = "tech_stack_2026";
 
 type NotesPageProps = {
   searchParams?: Promise<{

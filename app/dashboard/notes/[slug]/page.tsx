@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 
+import { APP_SCHEMA } from '@/lib/supabase/app-schema'
 import { createClient } from '@/lib/supabase/server'
 import { NotesEditorClient } from '../notes-editor-client'
-
-const APP_SCHEMA = 'tech_stack_2026'
 
 type NotePageProps = {
   params: Promise<{

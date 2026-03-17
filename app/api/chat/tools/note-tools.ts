@@ -2,11 +2,10 @@ import type { Anthropic } from '@anthropic-ai/sdk'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
+import { APP_SCHEMA } from '@/lib/supabase/app-schema'
 import { createClient } from '@/lib/supabase/server'
 import { createComment, createThread, listThreads } from '@/components/tiptap/lib/comments'
 import { createUniqueSlug, slugToDocumentPath } from '@/app/dashboard/notes/note-path'
-
-const APP_SCHEMA = 'tech_stack_2026'
 const MAX_NOTE_CHARS = 20000
 const MAX_COMMENT_CHARS = 4000
 const MAX_THREADS = 200
