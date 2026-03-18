@@ -46,10 +46,38 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  /* Concentric nested radius: inner ≈ outer − padding (e.g. p-2 inside rounded-lg) */
+  --radius-nested: max(0.25rem, calc(var(--radius) - 0.5rem));
+  /* Layered shadows — neutral oklch, not pure black (visual-design) */
+  --shadow-xs:
+    0 1px 2px oklch(0.22 0.02 280 / 0.04),
+    0 1px 1px oklch(0.22 0.02 280 / 0.03);
+  --shadow-sm:
+    0 1px 2px oklch(0.22 0.02 280 / 0.05),
+    0 2px 6px oklch(0.22 0.02 280 / 0.04);
+  --shadow-md:
+    0 2px 4px oklch(0.22 0.02 280 / 0.05),
+    0 6px 14px oklch(0.22 0.02 280 / 0.06);
+  --shadow-lg:
+    0 2px 4px oklch(0.22 0.02 280 / 0.05),
+    0 8px 20px oklch(0.22 0.02 280 / 0.06),
+    0 18px 40px oklch(0.22 0.02 280 / 0.07);
+  --shadow-xl:
+    0 4px 8px oklch(0.22 0.02 280 / 0.06),
+    0 14px 32px oklch(0.22 0.02 280 / 0.08),
+    0 28px 56px oklch(0.22 0.02 280 / 0.08);
 }
 
 :root {
   --radius: 0.625rem;
+  /* Spacing scale (4px grid) — pair with Tailwind spacing utilities */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -65,8 +93,8 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.145 0 0 / 0.1);
+  --input: oklch(0.145 0 0 / 0.08);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -84,6 +112,23 @@
 }
 
 .dark {
+  --shadow-xs:
+    0 1px 2px oklch(0.05 0.02 280 / 0.35),
+    0 1px 1px oklch(0 0 0 / 0.25);
+  --shadow-sm:
+    0 1px 2px oklch(0.05 0.02 280 / 0.4),
+    0 2px 8px oklch(0 0 0 / 0.35);
+  --shadow-md:
+    0 2px 6px oklch(0.05 0.02 280 / 0.45),
+    0 8px 20px oklch(0 0 0 / 0.4);
+  --shadow-lg:
+    0 2px 8px oklch(0.05 0.02 280 / 0.5),
+    0 12px 28px oklch(0 0 0 / 0.45),
+    0 24px 48px oklch(0 0 0 / 0.4);
+  --shadow-xl:
+    0 4px 12px oklch(0.05 0.02 280 / 0.55),
+    0 18px 40px oklch(0 0 0 / 0.5),
+    0 32px 64px oklch(0 0 0 / 0.45);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -121,8 +166,76 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: max(1px, 0.06em);
+  }
+
+  table,
+  [data-tabular-numerals],
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-variant-numeric: slashed-zero;
+  }
+
+  /* Oldstyle figures in prose only — not code/pre (slashed zero stays on mono) */
+  .prose
+    :where(p, li, blockquote, td, th, figcaption, h1, h2, h3, h4, h5, h6) {
+    font-variant-numeric: oldstyle-nums;
+  }
+
+  .prose table,
+  .prose [data-tabular-numerals],
+  .prose .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .prose th,
+  .prose td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 28%, transparent);
+    color: var(--foreground);
+  }
+
+  .dark ::selection {
+    background-color: color-mix(in oklab, var(--primary) 35%, transparent);
+    color: var(--foreground);
   }
 }
 
