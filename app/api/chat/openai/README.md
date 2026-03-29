@@ -4,7 +4,7 @@ This directory contains the OpenAI integration for the chat API, supporting GPT-
 
 ## Features
 
-- **GPT-5 Models**: Support for `gpt-5`, `gpt-5.4`, `gpt-5-mini`, and `gpt-5-nano`
+- **GPT-5 Models**: Support for `gpt-5`, `gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.4-nano`
 - **Function Calling**: Full support for the tool system (add project-specific tools in `app/api/chat/tools/`)
 - **Reasoning Effort**: Configurable reasoning effort levels (low, medium, high)
 - **File Attachments**: Support for file uploads (converted to text descriptions)
@@ -30,7 +30,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 - `context` (string, optional): JSON stringified page context
 - `messages` (string, optional): JSON stringified chat history
 - `model` (string, optional): OpenAI model name (defaults to `gpt-5`)
-- `reasoning_effort` (string, optional): Reasoning effort level - `low`, `medium`, or `high` (defaults to `medium`)
+- `reasoning_effort` (string, optional): Reasoning effort level - `none`, `low`, `medium`, `high`, or `xhigh`
 - `attachments` (files, optional): File attachments
 
 ## Response Format

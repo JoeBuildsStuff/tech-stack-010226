@@ -5,12 +5,18 @@ import { useRouter } from "next/navigation";
 
 import Tiptap from "@/components/tiptap/tiptap";
 import { APP_SCHEMA } from "@/lib/supabase/app-schema";
+import { normalizeNoteIconName, type NoteIconName } from "@/lib/note-icons";
 import { createClient } from "@/lib/supabase/client";
-import { Trash } from "lucide-react";
+import { Heart, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
-import { deleteNoteAction } from "./actions";
+import {
+  deleteNoteAction,
+  setNoteFavoriteAction,
+  setNoteIconAction,
+  updateNoteContentAction,
+} from "./actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,23 +28,34 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { NoteIconPicker } from "./note-icon-picker";
 
 type NotesEditorClientProps = {
   noteId: string;
   initialTitle: string;
   initialContent: string;
+  initialIsFavorite: boolean;
+  initialIconName: string;
 };
 
 export function NotesEditorClient({
   noteId,
   initialTitle,
   initialContent,
+  initialIsFavorite,
+  initialIconName,
 }: NotesEditorClientProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
   const [showComments, setShowComments] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(initialIsFavorite);
+  const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
+  const [iconName, setIconName] = useState<NoteIconName>(
+    normalizeNoteIconName(initialIconName)
+  );
+  const [isUpdatingIcon, setIsUpdatingIcon] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [saveState, setSaveState] = useState<
@@ -50,18 +67,12 @@ export function NotesEditorClient({
     async (nextContent: string, nextTitle: string) => {
       setSaveState("saving");
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .schema(APP_SCHEMA)
-        .from("notes")
-        .update({
-          title: nextTitle.trim() || "Untitled",
-          content: nextContent,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", noteId);
-
-      if (error) {
+      const result = await updateNoteContentAction(
+        noteId,
+        nextContent,
+        nextTitle
+      );
+      if (!result.success) {
         setSaveState("error");
         return;
       }
@@ -120,9 +131,55 @@ export function NotesEditorClient({
     }
 
     setDeleteDialogOpen(false);
+    window.dispatchEvent(new Event("tech-stack-notes-updated"));
     router.push("/dashboard/notes");
     router.refresh();
   }, [isDeleting, noteId, router]);
+
+  const handleToggleFavorite = useCallback(async () => {
+    if (isUpdatingFavorite) {
+      return;
+    }
+
+    const nextFavoriteState = !isFavorite;
+    setIsUpdatingFavorite(true);
+    setIsFavorite(nextFavoriteState);
+
+    const result = await setNoteFavoriteAction(noteId, nextFavoriteState);
+    if (!result.success) {
+      setIsFavorite(!nextFavoriteState);
+      setIsUpdatingFavorite(false);
+      setSaveState("error");
+      return;
+    }
+
+    window.dispatchEvent(new Event("tech-stack-notes-updated"));
+    setIsUpdatingFavorite(false);
+  }, [isFavorite, isUpdatingFavorite, noteId]);
+
+  const handleIconSelect = useCallback(
+    async (nextIconName: NoteIconName) => {
+      if (isUpdatingIcon || nextIconName === iconName) {
+        return;
+      }
+
+      const previousIconName = iconName;
+      setIsUpdatingIcon(true);
+      setIconName(nextIconName);
+
+      const result = await setNoteIconAction(noteId, nextIconName);
+      if (!result.success) {
+        setIconName(previousIconName);
+        setSaveState("error");
+        setIsUpdatingIcon(false);
+        return;
+      }
+
+      window.dispatchEvent(new Event("tech-stack-notes-updated"));
+      setIsUpdatingIcon(false);
+    },
+    [iconName, isUpdatingIcon, noteId]
+  );
 
   useEffect(() => {
     const supabase = createClient();
@@ -135,6 +192,10 @@ export function NotesEditorClient({
   }, [noteId]);
 
   useEffect(() => {
+    setIconName(normalizeNoteIconName(initialIconName));
+  }, [initialIconName]);
+
+  useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -145,6 +206,11 @@ export function NotesEditorClient({
   return (
     <div className="relative flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <ButtonGroup className="flex w-full">
+        <NoteIconPicker
+          iconName={iconName}
+          isUpdating={isUpdatingIcon}
+          onSelect={handleIconSelect}
+        />
         <Input
           size="sm"
           value={title}
@@ -189,6 +255,20 @@ export function NotesEditorClient({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          disabled={isUpdatingFavorite}
+          aria-label={isFavorite ? "Unfavorite note" : "Favorite note"}
+          onClick={() => {
+            void handleToggleFavorite();
+          }}
+        >
+          <Heart
+            className={`size-4 ${isFavorite ? "fill-current text-primary-background" : ""}`}
+          />
+        </Button>
       </ButtonGroup>
 
       <div className="absolute bottom-2 left-2 px-1 text-xs text-muted-foreground z-10">

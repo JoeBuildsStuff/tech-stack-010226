@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilePlusCorner } from "lucide-react";
+import { getNoteIconComponent } from "@/lib/note-icons";
 
 type NotesPageProps = {
   searchParams?: Promise<{
@@ -63,7 +64,9 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
   const { data: notes, error: notesError } = await supabase
     .schema(APP_SCHEMA)
     .from("notes")
-    .select("id, title, document_path, created_at, updated_at, viewed_at")
+    .select(
+      "id, title, document_path, icon_name, created_at, updated_at, viewed_at"
+    )
     .eq("user_id", user.id)
     .order(SORT_COLUMNS[sortBy], { ascending: sortOrder === "asc" });
 
@@ -112,6 +115,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
                 : sortBy === "viewed"
                   ? "Last viewed"
                   : "Last updated";
+            const NoteIcon = getNoteIconComponent(note.icon_name);
 
             return (
               <Card
@@ -124,7 +128,12 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
                   className=""
                 >
                   <CardHeader className="p-0">
-                    <CardTitle>{note.title || "Untitled"}</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      <NoteIcon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">
+                        {note.title || "Untitled"}
+                      </span>
+                    </CardTitle>
                     <CardDescription>
                       <Badge
                         className="text-muted-foreground"

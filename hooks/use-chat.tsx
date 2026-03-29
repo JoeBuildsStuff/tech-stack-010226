@@ -229,7 +229,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       context: PageContext | null,
       attachments?: Attachment[],
       model?: string,
-      reasoningEffort?: "low" | "medium" | "high"
+      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh"
     ) => {
       const formData = new FormData();
       formData.append("message", content);
@@ -343,7 +343,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       content: string,
       attachments?: Attachment[],
       model?: string,
-      reasoningEffort?: "low" | "medium" | "high",
+      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh",
       options?: { skipUserAdd?: boolean }
     ) => {
       if (

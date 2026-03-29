@@ -63,14 +63,14 @@ const MODEL_OPTIONS = [
   { value: "gpt-5.4", label: "GPT-5.4", menuLabel: "GPT-5.4 ($2.50 / $15)" },
   { value: "gpt-5", label: "GPT-5", menuLabel: "GPT-5 ($1.25 / $10)" },
   {
-    value: "gpt-5-mini",
-    label: "GPT-5 Mini",
-    menuLabel: "GPT-5 Mini ($0.25 / $2)",
+    value: "gpt-5.4-mini",
+    label: "GPT-5.4 Mini",
+    menuLabel: "GPT-5.4 Mini ($0.75 / $4.50)",
   },
   {
-    value: "gpt-5-nano",
-    label: "GPT-5 Nano",
-    menuLabel: "GPT-5 Nano ($0.05 / $0.40)",
+    value: "gpt-5.4-nano",
+    label: "GPT-5.4 Nano",
+    menuLabel: "GPT-5.4 Nano ($0.20 / $1.25)",
   },
 ] as const;
 

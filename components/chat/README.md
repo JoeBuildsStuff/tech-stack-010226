@@ -509,7 +509,7 @@ The hook centralizes chat behavior and integrates UI, storage, and APIs.
   - Chooses provider based on `model`:
     - Default Anthropic: `POST /api/chat`
     - Cerebras: `POST /api/chat/cerebras` (e.g., models like `gpt-oss-120b-*`)
-    - OpenAI: `POST /api/chat/openai` (e.g., models like `gpt-5-*`)
+    - OpenAI: `POST /api/chat/openai` (e.g., models like `gpt-5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`)
   - Sends last 10 messages for context, plus optional `reasoning_effort` and client timezone metadata.
   - Persists assistant reply with `addChatMessage`, then writes tool calls (`addChatToolCalls`) and suggested actions (`addChatSuggestedActions`) when present.
   - Refreshes messages from DB (`getChatMessages`) and updates the store via `setMessagesForSession` to replace optimistic entries.
