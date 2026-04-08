@@ -74,14 +74,14 @@ export function ChatPanel() {
         "z-40 bg-background border border-border flex flex-col transition-all duration-300 ease-in-out",
         // Maximized state - takes up right side of layout
         isMaximized && [
-          "fixed top-0 right-0 h-full w-96",
+          "fixed top-0 right-0 bottom-9 h-auto w-96",
           "border-l border-t-0 border-r-0 border-b-0 rounded-none",
         ],
         // Normal state - floating panel
         !isMaximized && [
-          "fixed bottom-2 right-2",
-          "w-full sm:w-96 h-full sm:h-[600px]",
-          "rounded-3xl shadow-2xl",
+          "fixed inset-x-0 top-0 bottom-9 sm:inset-auto sm:bottom-9 sm:right-1",
+          "w-full h-auto sm:w-96 sm:h-[600px]",
+          "rounded-none sm:rounded-3xl sm:shadow-2xl",
         ]
       )}
     >
