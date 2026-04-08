@@ -4,6 +4,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import CommandSearch from "@/components/dashboard/command-search";
+import { ChatFooterBar } from "@/components/chat/chat-footer-bar";
 
 export default async function RootLayout({
   children,
@@ -33,7 +34,8 @@ export default async function RootLayout({
           </div>
           <CommandSearch groups={[]} />
         </header>
-        <div className="flex-1 min-h-0 overflow-hidden pb-2">{children}</div>
+        <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+        <ChatFooterBar />
       </main>
     </SidebarProvider>
   );

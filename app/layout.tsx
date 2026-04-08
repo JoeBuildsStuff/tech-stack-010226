@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import { ChatBubble } from "@/components/chat/chat-bubble";
 import { ChatPanel } from "@/components/chat/chat-panel";
 
 const geistSans = Geist({
@@ -36,7 +35,6 @@ export default function RootLayout({
       >
         <Providers>
           {children}
-          <ChatBubble />
           <ChatPanel />
         </Providers>
       </body>

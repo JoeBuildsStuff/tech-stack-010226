@@ -1,6 +1,7 @@
 // Main chat exports
 export { ChatProvider } from './chat-provider'
 export { ChatBubble } from './chat-bubble'
+export { ChatFooterBar } from './chat-footer-bar'
 export { ChatPanel } from './chat-panel'
 export { ChatFullPage } from './chat-fullpage'
 export { ChatMessage, ChatMessageLoading } from './chat-message'

@@ -50,6 +50,7 @@ export function ChatHistory() {
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
     setMessagesForSession,
+    openSessionTab,
   } = useChatStore();
 
   const [sessions, setSessions] = useState<
@@ -96,6 +97,7 @@ export function ChatHistory() {
 
   const handleSessionClick = async (sessionId: string) => {
     setCurrentSessionIdFromServer(sessionId);
+    openSessionTab(sessionId);
     // fetch messages for the session and populate
     const res = await getChatMessages(sessionId);
     if (!("error" in res) && res.data) {
