@@ -39,7 +39,7 @@ Some models support configurable reasoning effort levels:
 
 Currently supported by:
 - Cerebras GPT-OSS-120B
-- OpenAI GPT-5 models (parameter passed but not yet utilized)
+- OpenAI GPT-5 models
 
 ## Function Calling
 

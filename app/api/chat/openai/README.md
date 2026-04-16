@@ -1,10 +1,11 @@
 # OpenAI Chat API
 
-This directory contains the OpenAI integration for the chat API, supporting GPT-5 models with function calling capabilities.
+This directory contains the OpenAI integration for the chat API, implemented on top of the OpenAI Responses API with function calling capabilities.
 
 ## Features
 
 - **GPT-5 Models**: Support for `gpt-5`, `gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.4-nano`
+- **Responses API**: Uses `responses.create(...)` instead of `chat.completions.create(...)`
 - **Function Calling**: Full support for the tool system (add project-specific tools in `app/api/chat/tools/`)
 - **Reasoning Effort**: Configurable reasoning effort levels (low, medium, high)
 - **File Attachments**: Support for file uploads (converted to text descriptions)
@@ -92,8 +93,8 @@ console.log(result.message)
 
 - **No Web Search**: OpenAI doesn't have built-in web search capabilities
 - **No Citations**: OpenAI doesn't provide citation information like Anthropic
-- **File Handling**: File attachments are converted to text descriptions since OpenAI doesn't support file uploads in chat completions
-- **Reasoning Effort**: The `reasoning_effort` parameter is passed but not currently used by OpenAI (kept for future compatibility)
+- **File Handling**: Images are passed as Responses input images; non-image files are converted to text descriptions
+- **Reasoning Effort**: The `reasoning_effort` parameter is forwarded to the Responses API
 
 ## Error Handling
 

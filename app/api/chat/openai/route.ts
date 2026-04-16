@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import type { Response, ResponseFunctionToolCall, ResponseInputItem, Tool } from 'openai/resources/responses/responses'
 import type { ChatMessage, PageContext } from '@/types/chat'
 import { availableTools, toolExecutors } from '../tools'
 import { createClient as supabaseClient } from '@/lib/supabase/server';
@@ -57,6 +58,15 @@ interface OpenAIAPIResponse {
   rawResponse?: unknown
 }
 
+type ResponsesInputContent =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string; detail: 'auto' }
+
+type ResponsesInputMessage = {
+  role: 'user' | 'assistant'
+  content: string | ResponsesInputContent[]
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPIResponse>> {
   try {
 
@@ -112,7 +122,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       body = await request.json()
     }
 
-    const { message, context, messages = [], model, attachments = [], clientTz = '', clientOffset = '', clientNowIso = '', clientPath = '' } = body
+    const {
+      message,
+      context,
+      messages = [],
+      model,
+      reasoningEffort,
+      attachments = [],
+      clientTz = '',
+      clientOffset = '',
+      clientNowIso = '',
+      clientPath = '',
+    } = body
 
     // Validate input
     if (!message || typeof message !== 'string') {
@@ -129,7 +150,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       )
     }
 
-    const response = await getOpenAIResponse(messages, message, context || null, attachments, model, clientTz, clientOffset, clientNowIso, clientPath)
+    const response = await getOpenAIResponse(
+      messages,
+      message,
+      context || null,
+      attachments,
+      model,
+      reasoningEffort,
+      clientTz,
+      clientOffset,
+      clientNowIso,
+      clientPath
+    )
 
     return NextResponse.json(response)
   } catch (error) {
@@ -165,14 +197,13 @@ function formatFileSize(bytes: number): string {
 }
 
 // Convert Anthropic tools to OpenAI function format
-function convertToolsToOpenAI() {
-  return availableTools.map(tool => ({
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.input_schema
-    }
+function convertToolsToOpenAI(): Tool[] {
+  return availableTools.map((tool): Tool => ({
+    type: 'function',
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.input_schema,
+    strict: false,
   }))
 }
 
@@ -196,6 +227,7 @@ async function getOpenAIResponse(
   context: PageContext | null,
   attachments: Array<{ file: File; name: string; type: string; size: number }> = [],
   model?: string,
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh',
   clientTz: string = '',
   clientOffset: string = '',
   clientNowIso: string = '',
@@ -224,66 +256,62 @@ If a tool responds with a url to a record, include it in your response using mar
       systemPrompt += `\n\n## Current Page Context:\n- Total items: ${context.totalCount}\n- Current filters: ${JSON.stringify(context.currentFilters, null, 2)}\n- Current sorting: ${JSON.stringify(context.currentSort, null, 2)}\n- Visible data sample: ${JSON.stringify(context.visibleData.slice(0, 3), null, 2)}`
     }
 
-    // 2. Map history to OpenAI's format (filter out system messages)
-    const openaiHistory: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = history
+    // 2. Map history to Responses API input messages (filter out system messages)
+    const openaiHistory: ResponsesInputMessage[] = history
       .filter(msg => msg.role !== 'system')
       .map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
-      }));
+      }))
 
     // 3. Construct the new user message with attachments
-    const newUserContent: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+    const newUserContent: ResponsesInputMessage = {
       role: 'user',
       content: newUserMessage
-    };
+    }
 
-    // Process attachments - OpenAI supports images via base64 data URLs
+    // Process attachments for Responses API.
     if (attachments.length > 0) {
-      const contentBlocks: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
-        { type: 'text', text: newUserMessage }
-      ];
+      const contentBlocks: ResponsesInputContent[] = [
+        { type: 'input_text', text: newUserMessage }
+      ]
 
       for (const attachment of attachments) {
         if (attachment.type.startsWith('image/')) {
-          // Convert image to base64 data URL
-          const arrayBuffer = await attachment.file.arrayBuffer();
-          const base64 = Buffer.from(arrayBuffer).toString('base64');
-          const dataUrl = `data:${attachment.type};base64,${base64}`;
-          
+          const arrayBuffer = await attachment.file.arrayBuffer()
+          const base64 = Buffer.from(arrayBuffer).toString('base64')
+          const dataUrl = `data:${attachment.type};base64,${base64}`
+
           contentBlocks.push({
-            type: 'image_url',
-            image_url: {
-              url: dataUrl,
-              detail: 'auto' // Let the model decide detail level
-            }
-          });
+            type: 'input_image',
+            image_url: dataUrl,
+            detail: 'auto',
+          })
         } else {
-          // Non-image files as text description
           contentBlocks.push({
-            type: 'text',
+            type: 'input_text',
             text: `\n\nFile attachment: ${attachment.name} (${attachment.type}, ${formatFileSize(attachment.size)})`
-          });
+          })
         }
       }
 
-      newUserContent.content = contentBlocks;
+      newUserContent.content = contentBlocks
     }
-    
-    const messagesForAPI: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-        { role: 'system', content: systemPrompt },
-        ...openaiHistory,
-        newUserContent
-    ];
+
+    const initialInput: ResponseInputItem[] = [
+      ...openaiHistory,
+      newUserContent,
+    ]
 
     // 4. Prepare tools
-    const tools = convertToolsToOpenAI();
+    const tools = convertToolsToOpenAI()
 
-    // 5. Iterative tool calling with maximum of 5 iterations
-    let maxIterations = 5;
-    const currentMessages = [...messagesForAPI];
-    let finalResponse = null;
-    const allToolResults: Array<{ success: boolean; data?: unknown; error?: string }> = [];
+    // 5. Iterative tool calling with maximum of 5 iterations.
+    let maxIterations = 5
+    let previousResponseId: string | undefined
+    let nextInput: ResponseInputItem[] = initialInput
+    let finalResponse: Response | null = null
+    const allToolResults: Array<{ success: boolean; data?: unknown; error?: string }> = []
     const allToolCalls: Array<{
       id: string
       name: string
@@ -293,106 +321,83 @@ If a tool responds with a url to a record, include it in your response using mar
         data?: unknown
         error?: string
       }
-    }> = [];
+    }> = []
 
     while (maxIterations > 0) {
-      const response = await openai.chat.completions.create({
+      const response = await openai.responses.create({
         model: model || 'gpt-5',
-        messages: currentMessages,
+        instructions: systemPrompt,
+        input: nextInput,
+        previous_response_id: previousResponseId,
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: tools.length > 0 ? 'auto' : undefined,
-        // max_completion_tokens: 2048,
-      });
+        reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+      })
 
-      const assistantMessage = response.choices[0]?.message;
-      if (!assistantMessage) {
-        break;
+      previousResponseId = response.id
+
+      const toolCalls = response.output.filter(
+        (item): item is ResponseFunctionToolCall =>
+          item.type === 'function_call' &&
+          typeof item.call_id === 'string' &&
+          typeof item.name === 'string' &&
+          typeof item.arguments === 'string'
+      )
+
+      if (toolCalls.length === 0) {
+        finalResponse = response
+        break
       }
 
-      // Check for tool calls
-      const toolCalls = assistantMessage.tool_calls;
-
-      if (!toolCalls || toolCalls.length === 0) {
-        // No more tools to execute, this is our final response
-        finalResponse = response;
-        break;
-      }
-
-      // Execute all tools in parallel
-      const toolResults = await Promise.all(
+      nextInput = await Promise.all(
         toolCalls.map(async (toolCall) => {
-          if (toolCall.type !== 'function') {
-            const errorMessage = `Unsupported tool call type: ${toolCall.type}`
-            const functionResult = { success: false, error: errorMessage }
-            allToolResults.push(functionResult)
-
-            return {
-              role: 'tool' as const,
-              tool_call_id: toolCall.id,
-              content: errorMessage,
-            }
-          }
-
-          // Parse arguments if they're a string, otherwise use as-is
           let parsedArgs: Record<string, unknown>
-          if (typeof toolCall.function.arguments === 'string') {
-            try {
-              parsedArgs = JSON.parse(toolCall.function.arguments)
-            } catch (error) {
-              console.error('Failed to parse tool arguments:', error)
-              parsedArgs = {}
-            }
-          } else {
-            parsedArgs = toolCall.function.arguments as Record<string, unknown>
+          try {
+            parsedArgs = JSON.parse(toolCall.arguments)
+          } catch (error) {
+            console.error('Failed to parse tool arguments:', error)
+            parsedArgs = {}
           }
-          
+
           const augmentedArgs = {
             ...parsedArgs,
             client_tz: clientTz,
             client_utc_offset: clientOffset,
             client_now_iso: clientNowIso,
           }
-          const functionResult = await executeFunctionCall(toolCall.function.name, augmentedArgs)
+          const functionResult = await executeFunctionCall(toolCall.name, augmentedArgs)
           allToolResults.push(functionResult)
-          
-          // Store tool call information
+
           allToolCalls.push({
-            id: toolCall.id,
-            name: toolCall.function.name,
+            id: toolCall.id || toolCall.call_id,
+            name: toolCall.name,
             arguments: augmentedArgs,
             result: functionResult
           })
-          
+
           return {
-            role: 'tool' as const,
-            tool_call_id: toolCall.id,
-            content: functionResult.success ? JSON.stringify(functionResult.data) : functionResult.error || 'Unknown error',
+            type: 'function_call_output' as const,
+            call_id: toolCall.call_id,
+            output: JSON.stringify(functionResult),
           }
         })
       )
 
-      // Append assistant's response to messages
-      currentMessages.push(assistantMessage);
-      
-      // Append tool results to messages
-      currentMessages.push(...toolResults);
-
-      maxIterations--;
+      maxIterations--
     }
 
     // Handle the final response
     if (finalResponse) {
-      const assistantMessage = finalResponse.choices[0]?.message;
-      const content = assistantMessage?.content || 'No response generated';
+      const content = finalResponse.output_text?.trim() || 'No response generated'
 
       // Get the first successful result for legacy response format
-      const firstSuccessfulResult = allToolResults.find(result => result.success);
+      const firstSuccessfulResult = allToolResults.find(result => result.success)
 
       return {
         message: content,
         functionResult: firstSuccessfulResult ? { success: true, data: firstSuccessfulResult.data } : { success: false, error: 'All tools failed' },
         toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
-        citations: [], // OpenAI doesn't provide citations like Anthropic
+        citations: [],
         actions: [],
         rawResponse: finalResponse
       }
