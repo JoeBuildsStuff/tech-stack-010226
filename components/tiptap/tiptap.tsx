@@ -43,6 +43,8 @@ import type { ThreadVisibilityFilters } from "@/components/tiptap/comment-thread
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const lowlight = createLowlight(common);
+const DEFAULT_SHOW_COMMENTS = false;
+
 const CustomCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlock);
@@ -63,7 +65,9 @@ const Tiptap = ({
   commentsDocumentId,
 }: TiptapProps) => {
   const commentsEnabled = Boolean(commentsDocumentId);
-  const [internalShowComments, setInternalShowComments] = useState(false);
+  const [internalShowComments, setInternalShowComments] = useState(
+    DEFAULT_SHOW_COMMENTS
+  );
   const [threadFilters, setThreadFilters] = useState<ThreadVisibilityFilters>({
     open: true,
     resolved: false,
@@ -315,7 +319,7 @@ const Tiptap = ({
     <div
       className={
         commentsEnabled
-          ? "flex h-full min-h-0 gap-2"
+          ? `flex h-full min-h-0 ${effectiveShowComments ? "gap-2" : "gap-0"}`
           : "h-full min-h-0"
       }
     >

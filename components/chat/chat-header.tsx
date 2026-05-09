@@ -3,7 +3,7 @@
 import {
   MessageSquareOff,
   SquarePen,
-  Ellipsis,
+  EllipsisVertical,
   PanelRight,
   PictureInPicture2,
   LaptopMinimal,
@@ -156,7 +156,7 @@ export function ChatHeader() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 w-8 p-0 flex-shrink-0 rounded-tl-xl"
+          className="h-8 w-8 p-0 shrink-0 rounded-tl-xl"
           onClick={handleShowHistory}
           title="View chat history"
         >
@@ -191,6 +191,16 @@ export function ChatHeader() {
 
       {/* Right section - Actions */}
       <div className="flex items-center space-x-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={handleNewChat}
+          title="New chat"
+        >
+          <SquarePen className="size-4 shrink-0" />
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -199,7 +209,7 @@ export function ChatHeader() {
               className="h-8 w-8 p-0"
               title="More actions"
             >
-              <Ellipsis className="size-4 shrink-0" />
+              <EllipsisVertical className="size-4 shrink-0" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end">

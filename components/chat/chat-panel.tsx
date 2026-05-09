@@ -74,7 +74,7 @@ export function ChatPanel() {
         "z-40 bg-background border border-border flex flex-col transition-all duration-300 ease-in-out",
         // Maximized state - takes up right side of layout
         isMaximized && [
-          "fixed top-0 right-0 bottom-9 h-auto w-96",
+          "fixed top-0 right-0 bottom-0 h-svh w-96",
           "border-l border-t-0 border-r-0 border-b-0 rounded-none",
         ],
         // Normal state - floating panel

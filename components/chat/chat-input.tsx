@@ -344,12 +344,12 @@ export function ChatInput() {
 
           {/* Actions */}
           <div
-            className={`flex gap-2 items-center absolute bottom-2 right-2 w-full justify-between transition-opacity duration-200 ${
+            className={`absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 transition-opacity duration-200 ${
               isDragOver ? "opacity-0 pointer-events-none" : "opacity-100"
             }`}
           >
             {/* Left side buttons */}
-            <div className="flex gap-2 items-center ml-4">
+            <div className="flex items-center gap-2">
               <input
                 ref={fileInputRef}
                 type="file"

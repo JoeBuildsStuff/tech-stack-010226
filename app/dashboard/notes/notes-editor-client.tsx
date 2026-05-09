@@ -48,7 +48,6 @@ export function NotesEditorClient({
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
-  const [showComments, setShowComments] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
@@ -284,8 +283,6 @@ export function NotesEditorClient({
           content={content}
           onChange={handleChange}
           commentsDocumentId={noteId}
-          showComments={showComments}
-          onShowCommentsChange={setShowComments}
           enableFileNodes
         />
       </div>
