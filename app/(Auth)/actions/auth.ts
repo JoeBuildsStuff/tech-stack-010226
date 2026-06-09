@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
@@ -16,6 +17,25 @@ const authWithPasswordSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, { message: "Password is required" }),
 })
+
+async function getAuthCallbackUrl(next?: string) {
+  const headerStore = await headers()
+  const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host')
+  const protocol = headerStore.get('x-forwarded-proto') ?? 'http'
+  const origin = host
+    ? `${protocol}://${host}`
+    : process.env.NEXT_PUBLIC_SITE_URL
+
+  if (!origin) {
+    throw new Error('Missing NEXT_PUBLIC_SITE_URL and request host for auth redirect.')
+  }
+
+  const callbackUrl = new URL('/auth/callback', origin)
+  if (next) {
+    callbackUrl.searchParams.set('next', next)
+  }
+  return callbackUrl.toString()
+}
 
 // Replace signin and signup with a single magic link function
 export async function signInWithMagicLink(formData: FormData) {
@@ -37,7 +57,7 @@ export async function signInWithMagicLink(formData: FormData) {
     email: result.data.email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}`,
+      emailRedirectTo: await getAuthCallbackUrl(),
     },
   })
 
@@ -61,7 +81,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+      redirectTo: await getAuthCallbackUrl()
     }
   })
 
@@ -85,7 +105,7 @@ export async function signInWithGithub() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'github',
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+      redirectTo: await getAuthCallbackUrl()
     }
   })
 
@@ -198,7 +218,7 @@ export async function signUpWithPassword(formData: FormData) {
     email: result.data.email,
     password: result.data.password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      emailRedirectTo: await getAuthCallbackUrl(),
     }
   })
 
@@ -227,7 +247,7 @@ export async function requestPasswordReset(formData: FormData) {
   }
 
   const { error } = await supabase.auth.resetPasswordForEmail(result.data.email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/update-password`, // We'll create /update-password page next
+    redirectTo: await getAuthCallbackUrl('/update-password'),
   })
 
   if (error) {
