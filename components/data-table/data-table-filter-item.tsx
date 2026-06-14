@@ -350,7 +350,6 @@ export default function DataTableFilterItem<TData>({
                   })
                   setCalendarOpen(false)
                 }}
-                initialFocus
               />
             </PopoverContent>
           </Popover>

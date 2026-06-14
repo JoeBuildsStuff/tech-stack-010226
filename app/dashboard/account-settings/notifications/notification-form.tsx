@@ -34,7 +34,7 @@ export function NotificationForm({ initialPreferences }: { initialPreferences: N
       <FieldSet>
         <FieldLegend>Email Notifications</FieldLegend>
         <FieldDescription>
-          Choose which emails you'd like to receive from us.
+          Choose which emails you&apos;d like to receive from us.
         </FieldDescription>
         
         <FieldGroup>
