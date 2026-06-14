@@ -15,6 +15,7 @@ export function ChatFooterBar() {
   const {
     isOpen,
     isMinimized,
+    isMaximized,
     setOpen,
     setMinimized,
     setMaximized,
@@ -102,8 +103,15 @@ export function ChatFooterBar() {
     .filter((s): s is NonNullable<typeof s> => s != null);
 
   return (
-    // Main footer container
-    <div className="-mx-2 shrink-0 z-50 flex min-h-9 items-center bg-background px-2">
+    // Main footer container.
+    // While the inset panel is full screen on mobile it provides its own
+    // input, so hide the footer there to avoid overlapping the chat input.
+    <div
+      className={cn(
+        "-mx-2 shrink-0 z-50 flex min-h-9 items-center bg-background px-2",
+        isMaximized && "max-md:hidden"
+      )}
+    >
       {/* Right-aligned cluster: session tabs + actions */}
       <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1 py-1">
         {/* Session tabs area */}

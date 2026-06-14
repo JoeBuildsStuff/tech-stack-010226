@@ -72,9 +72,10 @@ export function ChatPanel() {
     <div
       className={cn(
         "z-40 bg-background border border-border flex flex-col transition-all duration-300 ease-in-out",
-        // Maximized state - takes up right side of layout
+        // Maximized (inset) state - full screen on mobile, right column on md+.
+        // Breakpoint matches the `md:mr-96` reserved space in providers.tsx.
         isMaximized && [
-          "fixed top-0 right-0 bottom-0 h-svh w-96",
+          "fixed inset-0 z-50 md:inset-y-0 md:left-auto md:right-0 md:w-96",
           "border-l border-t-0 border-r-0 border-b-0 rounded-none",
         ],
         // Normal state - floating panel

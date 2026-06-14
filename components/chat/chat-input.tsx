@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
 import {
@@ -306,7 +307,7 @@ export function ChatInput() {
   return (
     <div className={layoutMode === "fullpage" ? "p-0" : "p-2"}>
       <div className="border border-border rounded-xl">
-        <div className="flex flex-col gap-2 items-center relative">
+        <div className="relative flex flex-col overflow-hidden rounded-xl bg-muted/50">
           <Textarea
             ref={textareaRef}
             value={input}
@@ -319,23 +320,21 @@ export function ChatInput() {
             placeholder={isDragOver ? "" : "Ask question..."}
             disabled={isLoading}
             rows={1}
-            className={`font-light resize-none rounded-xl border-none pb-12 transition-all duration-200 ${
-              isDragOver
-                ? "bg-blue-50 dark:bg-blue-900/20 text-transparent"
-                : "bg-muted/50"
-            }`}
-            // pr-20 and pb-8 add right and bottom padding to avoid overlap with floating buttons
+            className={cn(
+              "field-sizing-fixed max-h-[120px] min-h-0 resize-none overflow-y-auto rounded-none border-none bg-transparent px-3 py-2 font-light shadow-none transition-all duration-200 focus-visible:ring-0 dark:bg-transparent",
+              isDragOver && "bg-blue-50 text-transparent dark:bg-blue-900/20"
+            )}
           />
 
           {/* Dashed border overlay when dragging */}
           {isDragOver && (
-            <div className="absolute inset-0.5 border-2 border-dashed border-blue-400 dark:border-blue-500 rounded-lg pointer-events-none z-10" />
+            <div className="pointer-events-none absolute inset-0.5 z-10 rounded-lg border-2 border-dashed border-blue-400 dark:border-blue-500" />
           )}
 
           {/* Centered drop text overlay */}
           {isDragOver && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-              <div className="flex items-center gap-2 text-blue-400 dark:text-blue-500 font-light">
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+              <div className="flex items-center gap-2 font-light text-blue-400 dark:text-blue-500">
                 <FileImage className="size-4 shrink-0" />
                 <span>Drop files here...</span>
               </div>
@@ -344,9 +343,10 @@ export function ChatInput() {
 
           {/* Actions */}
           <div
-            className={`absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 transition-opacity duration-200 ${
-              isDragOver ? "opacity-0 pointer-events-none" : "opacity-100"
-            }`}
+            className={cn(
+              "flex items-center justify-between gap-2 px-2 pb-2 transition-opacity duration-200",
+              isDragOver && "pointer-events-none opacity-0"
+            )}
           >
             {/* Left side buttons */}
             <div className="flex items-center gap-2">
