@@ -21,7 +21,7 @@ export default async function SignupPage({
 
   return (
     <div className="flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-      <Card className="w-md">
+      <Card className="sm:w-md">
 
         {/* card header */}
         <CardHeader className="space-y-1">

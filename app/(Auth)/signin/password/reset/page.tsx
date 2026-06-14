@@ -18,7 +18,7 @@ export default async function PasswordPage({
 
   return (
     <div className="flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-      <Card className="w-md">
+      <Card className="sm:w-md">
         <CardHeader className="space-y-1">
             <Link href="/signin" className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4">
               <ArrowLeft className="h-4 w-4" />
