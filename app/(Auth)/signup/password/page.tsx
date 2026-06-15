@@ -2,8 +2,11 @@ import Link from 'next/link';
 import { signUpWithPassword } from '@/app/(Auth)/actions/auth'; // Changed from signInWithPassword
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, ArrowLeft } from "lucide-react";
-import { PasswordSignupForm } from "@/app/(Auth)/_components/auth-form-controls";
+import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
+import {
+  AuthAgreementFooter,
+  PasswordSignupForm,
+} from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function SignupPage({
   searchParams,
@@ -39,15 +42,21 @@ export default async function SignupPage({
             formError={error && message ? decodeURIComponent(message as string) : undefined}
           />
 
-          <p className="text-center text-sm text-muted-foreground">
-            Prefer passwordless?{" "}
-            <Link
-              href="/signup"
-              className="text-primary underline hover:text-primary/80 transition-colors"
-            >
-              Use a magic link.
-            </Link>
-          </p>
+          <Alert variant={"default"} className="bg-secondary/50 border-none">
+            <Mail className="" />
+            <AlertTitle className="text-sm">Prefer passwordless?</AlertTitle>
+            <AlertDescription className="pt-2 space-y-2">
+              <span>
+                We recommend using a{" "}
+                <Link
+                  href="/signup"
+                  className="text-primary underline hover:text-primary/80 transition-colors"
+                >
+                  passwordless option.
+                </Link>
+              </span>
+            </AlertDescription>
+          </Alert>
 
         {/* already have an account link */}
         <div className="text-center text-sm text-muted-foreground">
@@ -76,6 +85,9 @@ export default async function SignupPage({
             </Alert>
         </CardFooter>
         )}
+        <CardFooter className="border-t pt-4">
+          <AuthAgreementFooter />
+        </CardFooter>
         
       </Card>
     </div>

@@ -5,7 +5,10 @@ import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { signInWithMagicLink, requestPasswordReset } from "@/app/(Auth)/actions/auth";
-import { ResetRequestForm } from "@/app/(Auth)/_components/auth-form-controls";
+import {
+  AuthAgreementFooter,
+  ResetRequestForm,
+} from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function PasswordPage({
   searchParams,
@@ -73,6 +76,9 @@ export default async function PasswordPage({
             </Alert>
         </CardFooter>   
         )}
+        <CardFooter className="border-t pt-4">
+          <AuthAgreementFooter />
+        </CardFooter>
       </Card>
 
     </div>

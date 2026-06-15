@@ -7,7 +7,6 @@ import { useFormStatus } from "react-dom";
 import { Eye, EyeOff, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   InputOTP,
@@ -16,7 +15,6 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 type ServerAction = (formData: FormData) => void | Promise<void>;
 
@@ -25,26 +23,6 @@ const PASSWORD_RULE_TEXT =
 
 function isStrongPassword(password: string) {
   return password.length >= 12 && /[\d\W_]/.test(password);
-}
-
-function passwordStrength(password: string) {
-  if (!password) {
-    return { label: "Enter a password", className: "text-muted-foreground" };
-  }
-
-  if (isStrongPassword(password) && password.length >= 16) {
-    return { label: "Strong password", className: "text-green-600 dark:text-green-400" };
-  }
-
-  if (isStrongPassword(password)) {
-    return { label: "Good password", className: "text-green-600 dark:text-green-400" };
-  }
-
-  if (password.length >= 8) {
-    return { label: "Almost there", className: "text-yellow-600 dark:text-yellow-400" };
-  }
-
-  return { label: "Too short", className: "text-destructive" };
 }
 
 export function PendingButton({
@@ -77,10 +55,27 @@ export function PendingButton({
   );
 }
 
+export function AuthAgreementFooter() {
+  return (
+    <p className="text-center text-xs leading-5 text-muted-foreground">
+      By continuing, you agree to our{" "}
+      <Link href="/terms" className="underline underline-offset-2">
+        Terms of Service
+      </Link>{" "}
+      and{" "}
+      <Link href="/privacy" className="underline underline-offset-2">
+        Privacy Policy
+      </Link>
+      .
+    </p>
+  );
+}
+
 function PasswordField({
   id,
   name,
   label,
+  labelAction,
   value,
   onChange,
   autoComplete,
@@ -91,6 +86,7 @@ function PasswordField({
   id: string;
   name: string;
   label: string;
+  labelAction?: ReactNode;
   value?: string;
   onChange?: (value: string) => void;
   autoComplete?: string;
@@ -110,7 +106,10 @@ function PasswordField({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={id}>{label}</Label>
+        {labelAction}
+      </div>
       <div className="relative">
         <Input
           id={id}
@@ -143,7 +142,11 @@ function PasswordField({
           onClick={() => setVisible((current) => !current)}
           aria-label={visible ? "Hide password" : "Show password"}
         >
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {visible ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
         </Button>
       </div>
       {showRules && (
@@ -165,42 +168,18 @@ function PasswordField({
   );
 }
 
-function PasswordStrength({ password }: { password: string }) {
-  const strength = passwordStrength(password);
-  const rules = [
-    { label: "At least 12 characters", valid: password.length >= 12 },
-    { label: "Includes a number or symbol", valid: /[\d\W_]/.test(password) },
-  ];
-
-  return (
-    <div className="space-y-1.5 rounded-md bg-secondary/40 p-2.5">
-      <div className={cn("text-xs font-medium", strength.className)}>
-        {strength.label}
-      </div>
-      <ul className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-        {rules.map((rule) => (
-          <li
-            key={rule.label}
-            className={cn(rule.valid && "text-green-600 dark:text-green-400")}
-          >
-            {rule.valid ? "✓" : "○"} {rule.label}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function PasswordSignInForm({
   action,
   next,
   email,
   formError,
+  forgotPasswordHref,
 }: {
   action: ServerAction;
   next: string | null;
   email?: string;
   formError?: string;
+  forgotPasswordHref?: string;
 }) {
   const [password, setPassword] = useState("");
 
@@ -224,13 +203,27 @@ export function PasswordSignInForm({
           id="password"
           name="password"
           label="Password"
+          labelAction={
+            forgotPasswordHref ? (
+              <Link
+                href={forgotPasswordHref}
+                className="text-xs text-muted-foreground hover:underline"
+              >
+                Forgot password?
+              </Link>
+            ) : undefined
+          }
           value={password}
           onChange={setPassword}
           autoComplete="current-password"
           error={formError}
           showRules={false}
         />
-        <PendingButton formAction={action} className="w-full" pendingChildren="Signing in...">
+        <PendingButton
+          formAction={action}
+          className="w-full"
+          pendingChildren="Signing in..."
+        >
           Sign in
         </PendingButton>
       </div>
@@ -247,13 +240,13 @@ export function PasswordSignupForm({
 }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const passwordError =
     password && !isStrongPassword(password) ? PASSWORD_RULE_TEXT : undefined;
   const confirmError =
-    confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined;
-  const canSubmit =
-    isStrongPassword(password) && password === confirmPassword && acceptedTerms;
+    confirmPassword && password !== confirmPassword
+      ? "Passwords do not match."
+      : undefined;
+  const canSubmit = isStrongPassword(password) && password === confirmPassword;
 
   return (
     <form>
@@ -279,7 +272,6 @@ export function PasswordSignupForm({
           error={passwordError}
           showRules={false}
         />
-        <PasswordStrength password={password} />
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"
@@ -290,30 +282,6 @@ export function PasswordSignupForm({
           error={confirmError}
           showRules={false}
         />
-        <div className="flex items-start gap-2">
-          <Checkbox
-            id="acceptedTerms"
-            name="acceptedTerms"
-            checked={acceptedTerms}
-            onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
-            aria-describedby="acceptedTerms-description"
-          />
-          <Label
-            htmlFor="acceptedTerms"
-            id="acceptedTerms-description"
-            className="text-xs font-normal leading-5 text-muted-foreground"
-          >
-            I agree to the{" "}
-            <Link href="/terms" className="text-primary underline">
-              Terms
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="text-primary underline">
-              Privacy Policy
-            </Link>
-            .
-          </Label>
-        </div>
         {formError && <p className="text-xs text-destructive">{formError}</p>}
         <PendingButton
           formAction={action}
@@ -340,7 +308,9 @@ export function UpdatePasswordForm({
   const passwordError =
     password && !isStrongPassword(password) ? PASSWORD_RULE_TEXT : undefined;
   const confirmError =
-    confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined;
+    confirmPassword && password !== confirmPassword
+      ? "Passwords do not match."
+      : undefined;
   const canSubmit = isStrongPassword(password) && password === confirmPassword;
 
   return (
@@ -357,7 +327,6 @@ export function UpdatePasswordForm({
           placeholder="••••••••"
           showRules={false}
         />
-        <PasswordStrength password={password} />
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"
@@ -370,7 +339,11 @@ export function UpdatePasswordForm({
           showRules={false}
         />
         {formError && <p className="text-xs text-destructive">{formError}</p>}
-        <PendingButton className="w-full" pendingChildren="Updating password..." disabled={!canSubmit}>
+        <PendingButton
+          className="w-full"
+          pendingChildren="Updating password..."
+          disabled={!canSubmit}
+        >
           Update password
         </PendingButton>
       </div>
@@ -462,7 +435,12 @@ export function CooldownSubmitButton({
   }
 
   return (
-    <Button type="submit" variant={variant} className={className} disabled={pending}>
+    <Button
+      type="submit"
+      variant={variant}
+      className={className}
+      disabled={pending}
+    >
       <RotateCcw className="h-4 w-4" />
       {pending ? pendingChildren : children}
     </Button>
@@ -486,7 +464,8 @@ export function OtpVerificationForm({
 }) {
   const [token, setToken] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const tokenError = error || (token && token.length < 6 ? "Enter all 6 digits." : undefined);
+  const tokenError =
+    error || (token && token.length < 6 ? "Enter all 6 digits." : undefined);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -505,7 +484,9 @@ export function OtpVerificationForm({
               maxLength={6}
               name="token"
               value={token}
-              onChange={(value) => setToken(value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(value) =>
+                setToken(value.replace(/\D/g, "").slice(0, 6))
+              }
               pasteTransformer={(value) => value.replace(/\D/g, "").slice(0, 6)}
               aria-invalid={!!tokenError}
               aria-describedby={tokenError ? "otp-error" : undefined}

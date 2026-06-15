@@ -3,7 +3,10 @@ import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { signInWithPassword } from "@/app/(Auth)/actions/auth";
-import { PasswordSignInForm } from "@/app/(Auth)/_components/auth-form-controls";
+import {
+  AuthAgreementFooter,
+  PasswordSignInForm,
+} from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function PasswordPage({
   searchParams,
@@ -37,17 +40,13 @@ export default async function PasswordPage({
         </CardHeader>
         <CardContent className="space-y-4">
 
-            <div className="space-y-2">
-              <div className="flex justify-end">
-                <Link href="/signin/password/reset" className="text-xs text-muted-foreground hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
+            <div>
               <PasswordSignInForm
                 action={signInWithPassword}
                 next={next}
                 email={typeof email === "string" ? decodeURIComponent(email) : undefined}
                 formError={error && message ? decodeURIComponent(message as string) : undefined}
+                forgotPasswordHref="/signin/password/reset"
               />
             </div>
 
@@ -92,6 +91,9 @@ export default async function PasswordPage({
             </Alert>
           </CardFooter>
         )}
+        <CardFooter className="border-t pt-4">
+          <AuthAgreementFooter />
+        </CardFooter>
       </Card>
 
     </div>

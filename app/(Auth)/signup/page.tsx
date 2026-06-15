@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Mail } from "lucide-react";
-import { PendingButton } from "@/app/(Auth)/_components/auth-form-controls";
+import {
+  AuthAgreementFooter,
+  PendingButton,
+} from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function SignupPage({
   searchParams,
@@ -163,6 +166,9 @@ export default async function SignupPage({
             </Alert>
         </CardFooter>
         )}
+        <CardFooter className="border-t pt-4">
+          <AuthAgreementFooter />
+        </CardFooter>
       </Card>
     </div>
   );

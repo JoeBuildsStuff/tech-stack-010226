@@ -29,9 +29,6 @@ const signUpWithPasswordSchema = z.object({
   email: z.string().email(),
   password: passwordPolicy,
   confirmPassword: z.string(),
-  acceptedTerms: z.literal("on", {
-    error: "You must agree to the Terms and Privacy Policy",
-  }),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -179,11 +176,9 @@ export async function signInWithPassword(formData: FormData) {
 
   const supabase = await createClient()
 
-  const result = signUpWithPasswordSchema.safeParse({
+  const result = authWithPasswordSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
-    confirmPassword: formData.get('confirmPassword'),
-    acceptedTerms: formData.get('acceptedTerms'),
   })
   const next = formData.get('next') as string | null;
 
@@ -224,9 +219,10 @@ export async function signUpWithPassword(formData: FormData) {
 
   const supabase = await createClient()
 
-  const result = authWithPasswordSchema.safeParse({
+  const result = signUpWithPasswordSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
   })
 
   if (!result.success) {
