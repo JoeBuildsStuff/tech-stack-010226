@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 import Link from "next/link";
 import { signInWithMagicLink } from '@/app/(Auth)/actions/auth';
-import { ArrowLeft, Mail, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, Mail } from "lucide-react";
+import { CooldownSubmitButton } from "@/app/(Auth)/_components/auth-form-controls";
 
 
 export default async function VerifyEmailPage({
@@ -24,7 +24,7 @@ export default async function VerifyEmailPage({
         <CardHeader className="space-y-1">
         <Link href="/signin" className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4">
               <ArrowLeft className="h-4 w-4" />
-              back to signin
+              Back to sign in
             </Link>
           <CardTitle className="text-2xl font-bold text-center">Verify your email</CardTitle>
           <CardDescription className="text-center">
@@ -45,14 +45,26 @@ export default async function VerifyEmailPage({
         <p className="text-center text-muted-foreground text-sm">
           Please check your email and click the verification link to continue.
         </p>
+        <p className="text-center text-sm mt-4">
+          Wrong email?{" "}
+          <Link href="/signup" className="text-primary hover:underline">
+            Use a different address.
+          </Link>
+        </p>
       </div>
 
 
         {/* resend verification link button */}
-        <div className="flex justify-center items-center">
-        <Button variant="default" className="" formAction={signInWithMagicLink}>
-          <RotateCcw className="h-4 w-4" />Resend Verification Link 
-        </Button></div>
+        <form className="flex justify-center items-center" action={signInWithMagicLink}>
+          <input
+            type="hidden"
+            name="email"
+            value={typeof email === "string" ? decodeURIComponent(email) : ""}
+          />
+          <CooldownSubmitButton>
+            Resend verification link
+          </CooldownSubmitButton>
+        </form>
         </CardContent>
 
         {/* no account sign up link */}

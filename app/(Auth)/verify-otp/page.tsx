@@ -2,22 +2,15 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSeparator,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
 import { ArrowLeft, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { type EmailOtpType } from "@supabase/supabase-js";
+import { OtpVerificationForm } from "@/app/(Auth)/_components/auth-form-controls";
 
 const allowedOtpTypes = new Set([
   "email",
@@ -55,6 +48,8 @@ export default async function VerifyOTPPage({
   const requestedType = getStringParam(params.type) ?? "email";
   const otpType = allowedOtpTypes.has(requestedType) ? requestedType : "email";
   const next = getSafeNext(getStringParam(params.next));
+  const error = getStringParam(params.error);
+  const message = getStringParam(params.message);
 
   async function verifyOTP(formData: FormData) {
     "use server";
@@ -64,6 +59,17 @@ export default async function VerifyOTPPage({
     const emailValue = formData.get("email") as string;
     const typeValue = formData.get("type") as string;
     const nextValue = getSafeNext(formData.get("next") as string | undefined);
+    const search = new URLSearchParams({
+      email: emailValue,
+      type: typeValue,
+      next: nextValue,
+    });
+
+    if (!emailValue || !/^\d{6}$/.test(token)) {
+      search.set("error", "validation");
+      search.set("message", "Enter the 6-digit code from your email.");
+      redirect(`/verify-otp?${search.toString()}`);
+    }
 
     const { error } = await supabase.auth.verifyOtp({
       email: emailValue,
@@ -73,7 +79,9 @@ export default async function VerifyOTPPage({
 
     if (error) {
       console.log("otp-verification-error", error);
-      redirect("/error");
+      search.set("error", "invalid_otp");
+      search.set("message", "That code is incorrect or expired.");
+      redirect(`/verify-otp?${search.toString()}`);
     }
 
     if (typeValue === "recovery") {
@@ -83,9 +91,35 @@ export default async function VerifyOTPPage({
     redirect(nextValue);
   }
 
-  async function resendOTP() {
+  async function resendOTP(formData: FormData) {
     "use server";
-    console.log("Resend OTP to:", email);
+
+    const supabase = await createClient();
+    const emailValue = formData.get("email") as string;
+    const typeValue = formData.get("type") as string;
+    const nextValue = getSafeNext(formData.get("next") as string | undefined);
+    const search = new URLSearchParams({
+      email: emailValue,
+      type: typeValue,
+      next: nextValue,
+    });
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: emailValue,
+      options: {
+        shouldCreateUser: true,
+      },
+    });
+
+    if (error) {
+      console.log("otp-resend-error", error);
+      search.set("error", error.code === "over_email_send_rate_limit" ? "rate_limit" : "resend_error");
+      search.set("message", error.message);
+      redirect(`/verify-otp?${search.toString()}`);
+    }
+
+    search.set("message", "We sent a new code.");
+    redirect(`/verify-otp?${search.toString()}`);
   }
 
   return (
@@ -97,19 +131,19 @@ export default async function VerifyOTPPage({
             className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            back to signin
+            Back to sign in
           </Link>
           <CardTitle className="text-2xl font-bold text-center">
-            Verify OTP
+            Verify code
           </CardTitle>
           <CardDescription className="text-center">
             Enter the code we sent to your email
           </CardDescription>
         </CardHeader>
-        <CardContent className="">
+        <CardContent>
           <div className="flex flex-col gap-4">
-            <div className="bg-secondary/50 p-6 rounded-lg">
-              <div className="flex justify-center mb-4">
+            <div className="bg-secondary/50 p-4 rounded-lg">
+              <div className="flex justify-center mb-3">
                 <div className="h-12 w-12 rounded-full bg-secondary flex items-center justify-center">
                   <KeyRound className="h-6 w-6" />
                 </div>
@@ -119,52 +153,19 @@ export default async function VerifyOTPPage({
               </p>
               <p className="text-center font-medium mb-4">{email}</p>
               <p className="text-center text-xs text-muted-foreground px-6">
-                Didn&apos;t receive a code? The code expires soon.
+                Code expires in 09:42.
               </p>
             </div>
-            <form>
-              <input type="hidden" name="email" value={email ?? ""} />
-              <input type="hidden" name="type" value={otpType} />
-              <input type="hidden" name="next" value={next} />
-              <div className="space-y-4">
-                <div className="flex justify-center mb-8 mt-4">
-                  <InputOTP maxLength={6} name="token">
-                    <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
-                    </InputOTPGroup>
-                    <InputOTPSeparator className="text-border" />
-                    <InputOTPGroup>
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
-                <Button type="submit" className="w-full" formAction={verifyOTP}>
-                  Verify Code
-                </Button>
-              </div>
-            </form>
-            <form action={resendOTP} className="">
-              <Button type="submit" variant="outline" className="w-full">
-                Resend Code
-              </Button>
-            </form>
+            <OtpVerificationForm
+              verifyAction={verifyOTP}
+              resendAction={resendOTP}
+              email={email ?? ""}
+              type={otpType}
+              next={next}
+              error={error && message ? decodeURIComponent(message) : undefined}
+            />
           </div>
         </CardContent>
-        <CardFooter className="flex flex-row items-center justify-center">
-          <div className="text-center text-sm text-muted-foreground flex flex-row items-center justify-center gap-2">
-            Need help?{" "}
-            <Link
-              href="/support"
-              className="text-primary underline hover:text-primary/80 transition-colors"
-            >
-              Contact support
-            </Link>
-          </div>
-        </CardFooter>
       </Card>
     </div>
   );

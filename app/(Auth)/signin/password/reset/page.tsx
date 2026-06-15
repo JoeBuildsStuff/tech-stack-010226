@@ -3,11 +3,9 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { signInWithMagicLink, requestPasswordReset } from "@/app/(Auth)/actions/auth";
+import { ResetRequestForm } from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function PasswordPage({
   searchParams,
@@ -22,7 +20,7 @@ export default async function PasswordPage({
         <CardHeader className="space-y-1">
             <Link href="/signin" className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4">
               <ArrowLeft className="h-4 w-4" />
-              back to passwordless options
+              Back to passwordless options
             </Link>
             <CardTitle className="text-2xl font-bold text-center">Reset Password</CardTitle>
           <CardDescription className="text-center">
@@ -33,48 +31,25 @@ export default async function PasswordPage({
         {/* card content */}
         <CardContent className="space-y-4">
 
-            <form>
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" placeholder="m@example.com" type="email" name="email" required />
-                    </div>
-
-                    <div className="flex flex-row gap-2 w-full">
-                <Button 
-                  type="submit" 
-                  variant="default"
-                  className="flex-1"
-                  formAction={requestPasswordReset}
-                >
-                  Reset Password
-                </Button>
-                <Button 
-                  type="submit" 
-                  variant="default"
-                  className="flex-1"
-                  formAction={signInWithMagicLink}
-                >
-                  Send Magic Link
-                </Button>
-                </div>
-                </div>
-
-            </form>
+            <ResetRequestForm
+              resetAction={requestPasswordReset}
+              magicLinkAction={signInWithMagicLink}
+              email={typeof email === "string" ? decodeURIComponent(email) : undefined}
+            />
 
             <Alert variant={"default"} className="bg-secondary/50 border-none">
           <Mail className="" />
-          <AlertTitle className="text-sm">One Time Link</AlertTitle>
+          <AlertTitle className="text-sm">Password reset link</AlertTitle>
           <AlertDescription className="pt-2 space-y-2">
           <span>
-            We&apos;ll email you a one time link to access your account.
+            We&apos;ll email you a secure link to reset your password.
           </span>
           </AlertDescription>
         </Alert>
 
                 {/* no account sign up link */}
                 <div className="text-center text-sm text-muted-foreground flex flex-row items-center justify-center gap-2">
-          No account? {' '}
+          Don&apos;t have an account? {' '}
           <Link href="/signup" className="text-primary underline hover:text-primary/80 transition-colors">
             Sign up
           </Link>

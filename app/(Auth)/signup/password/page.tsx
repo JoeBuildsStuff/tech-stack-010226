@@ -1,11 +1,9 @@
 import Link from 'next/link';
 import { signUpWithPassword } from '@/app/(Auth)/actions/auth'; // Changed from signInWithPassword
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { PasswordSignupForm } from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function SignupPage({
   searchParams,
@@ -21,81 +19,35 @@ export default async function SignupPage({
 
   return (
     <div className="flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-      <Card className="sm:w-md">
-        <CardHeader className="space-y-1">
+      <Card className="gap-4 py-4 sm:w-md">
+        <CardHeader className="space-y-0">
             <Link href="/signup" className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4">
               <ArrowLeft className="h-4 w-4" />
-              back to passwordless options
+              Back to passwordless options
             </Link>
           <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
           <CardDescription className="text-center">
-            Enter your details below to create your account
+            Create your account with email and a password.
           </CardDescription>
         </CardHeader>
 
         {/* card content */}
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
 
-          {/* email and password form */}  
-          <form>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input 
-                  id="email" 
-                  placeholder="m@example.com" 
-                  type="email" 
-                  name="email"
-                  required 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input 
-                  id="password" 
-                  placeholder="password" 
-                  type="password" 
-                  name="password"
-                  required 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Confirm Password</Label>
-                <Input 
-                  id="password" 
-                  placeholder="password" 
-                  type="password" 
-                  name="password"
-                  required 
-                />
-              </div>
+          <PasswordSignupForm
+            action={signUpWithPassword}
+            formError={error && message ? decodeURIComponent(message as string) : undefined}
+          />
 
-              <Button 
-                type="submit" 
-                variant="default"
-                className="w-full"
-                formAction={signUpWithPassword} // Changed from signInWithPassword
-              >
-                Sign Up
-              </Button>
-            </div>
-          </form>
-
-          {/* passwordless option alert */}
-          <Alert variant={"default"} className="bg-secondary/50 border-none">
-          <Mail className="" />
-          <AlertTitle className="text-sm">Password Option</AlertTitle>
-          <AlertDescription className="pt-2 space-y-2">
-          <span>
-            We recomend using a <Link
+          <p className="text-center text-sm text-muted-foreground">
+            Prefer passwordless?{" "}
+            <Link
               href="/signup"
               className="text-primary underline hover:text-primary/80 transition-colors"
             >
-              passwordless option.
-            </Link> 
-          </span>
-          </AlertDescription>
-        </Alert>
+              Use a magic link.
+            </Link>
+          </p>
 
         {/* already have an account link */}
         <div className="text-center text-sm text-muted-foreground">

@@ -12,10 +12,29 @@ const authSchema = z.object({
   email: z.string().email(),
 })
 
+const passwordPolicy = z
+  .string()
+  .min(12, { message: "Password must be at least 12 characters long" })
+  .regex(/[\d\W_]/, {
+    message: "Password must include at least one number or symbol",
+  })
+
 // Add a schema for email and password
 const authWithPasswordSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, { message: "Password is required" }),
+})
+
+const signUpWithPasswordSchema = z.object({
+  email: z.string().email(),
+  password: passwordPolicy,
+  confirmPassword: z.string(),
+  acceptedTerms: z.literal("on", {
+    error: "You must agree to the Terms and Privacy Policy",
+  }),
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 })
 
 async function getAuthCallbackUrl(next?: string) {
@@ -160,9 +179,11 @@ export async function signInWithPassword(formData: FormData) {
 
   const supabase = await createClient()
 
-  const result = authWithPasswordSchema.safeParse({
+  const result = signUpWithPasswordSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
+    acceptedTerms: formData.get('acceptedTerms'),
   })
   const next = formData.get('next') as string | null;
 
@@ -267,7 +288,7 @@ export async function requestPasswordReset(formData: FormData) {
 }
 
 const updatePasswordSchema = z.object({
-  password: z.string().min(6, { message: "Password must be at least 6 characters long" }),
+  password: passwordPolicy,
   confirmPassword: z.string(),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords do not match",

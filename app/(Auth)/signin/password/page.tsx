@@ -1,11 +1,9 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { signInWithPassword } from "@/app/(Auth)/actions/auth";
+import { PasswordSignInForm } from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function PasswordPage({
   searchParams,
@@ -22,7 +20,7 @@ export default async function PasswordPage({
         <CardHeader className="space-y-1">
             <Link href="/signin" className="text-sm text-muted-foreground flex flex-row items-center gap-2 mb-4">
               <ArrowLeft className="h-4 w-4" />
-              back to passwordless options
+              Back to passwordless options
             </Link>
             <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
           <CardDescription className="text-center">
@@ -30,7 +28,7 @@ export default async function PasswordPage({
           </CardDescription>
           {(!error && message) && (
             <Alert variant={"default"} className="mt-4 border-none text-green-700 bg-green-50 dark:bg-green-950 dark:text-green-500">
-              <AlertTitle className="text-sm font-semibold">Success!</AlertTitle>
+              <AlertTitle className="text-sm font-semibold">Success</AlertTitle>
               <AlertDescription className="text-xs text-green-700 dark:text-green-500">
                 {typeof message === 'string' ? decodeURIComponent(message) : 'Action completed successfully.'}
               </AlertDescription>
@@ -39,40 +37,26 @@ export default async function PasswordPage({
         </CardHeader>
         <CardContent className="space-y-4">
 
-            <form>
-                {next && <input type="hidden" name="next" value={next} />}
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" placeholder="m@example.com" type="email" name="email" required />
-                    </div>
-                    <div className="space-y-2">
-                        <div className="flex flex-row items-center gap-2 justify-between">
-                        <Label htmlFor="password">Password</Label>
-                        <Link href="/signin/password/reset" className="text-xs text-muted-foreground">Forgot password?</Link>
-                        </div>
-                        <Input id="password" placeholder="password" type="password" name="password" required />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                <Button 
-                  type="submit" 
-                  variant="default"
-                  className="flex-1"
-                  formAction={signInWithPassword}
-                >
-                  Sign in
-                </Button>
-                </div>
-                </div>
-
-            </form>
+            <div className="space-y-2">
+              <div className="flex justify-end">
+                <Link href="/signin/password/reset" className="text-xs text-muted-foreground hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+              <PasswordSignInForm
+                action={signInWithPassword}
+                next={next}
+                email={typeof email === "string" ? decodeURIComponent(email) : undefined}
+                formError={error && message ? decodeURIComponent(message as string) : undefined}
+              />
+            </div>
 
             <Alert variant={"default"} className="bg-secondary/50 border-none">
           <Mail className="" />
-          <AlertTitle className="text-sm">Passwordless Option</AlertTitle>
+          <AlertTitle className="text-sm">Prefer passwordless?</AlertTitle>
           <AlertDescription className="pt-2 space-y-2">
           <span>
-            We recomend using a <Link
+            We recommend using a <Link
               href="/signin"
               className="text-primary underline hover:text-primary/80 transition-colors"
             >
@@ -84,7 +68,7 @@ export default async function PasswordPage({
 
                 {/* no account sign up link */}
                 <div className="text-center text-sm text-muted-foreground flex flex-row items-center justify-center gap-2">
-          No account? {' '}
+          Don&apos;t have an account? {' '}
           <Link href="/signup" className="text-primary underline hover:text-primary/80 transition-colors">
             Sign up
           </Link>

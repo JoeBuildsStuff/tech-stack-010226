@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Mail } from "lucide-react";
+import { PendingButton } from "@/app/(Auth)/_components/auth-form-controls";
 
 export default async function signinPage({
   searchParams,
@@ -122,22 +123,20 @@ export default async function signinPage({
 
               {/* passwordless option buttons */}
               <div className="flex flex-row gap-2 w-full">
-                <Button
-                  type="submit"
-                  variant="default"
+                <PendingButton
                   className="flex-1"
                   formAction={signInWithMagicLink}
+                  pendingChildren="Sending..."
                 >
-                  Send Magic Link
-                </Button>
-                <Button
-                  type="submit"
-                  variant="default"
+                  Email me a link
+                </PendingButton>
+                <PendingButton
                   className="flex-1"
                   formAction={signInWithOTP}
+                  pendingChildren="Sending..."
                 >
-                  Send OTP Code
-                </Button>
+                  Send 6-digit code instead
+                </PendingButton>
               </div>
             </div>
           </form>
@@ -145,11 +144,10 @@ export default async function signinPage({
           {/* passwordless option alert */}
           <Alert variant={"default"} className="bg-secondary/50 border-none">
             <Mail className="" />
-            <AlertTitle className="text-sm">Passwordless Option</AlertTitle>
+            <AlertTitle className="text-sm">Password sign-in</AlertTitle>
             <AlertDescription className="pt-2 space-y-2">
               <span>
-                We recomend selecting a passwordless option. If you insist on
-                using a password,{" "}
+                Password sign-in is available if you need it.{" "}
                 <Link
                   href={
                     next
@@ -158,7 +156,7 @@ export default async function signinPage({
                   }
                   className="text-primary underline hover:text-primary/80 transition-colors"
                 >
-                  continue here.
+                  Continue with password.
                 </Link>
               </span>
             </AlertDescription>
@@ -166,7 +164,7 @@ export default async function signinPage({
 
           {/* no account sign up link */}
           <div className="text-center text-sm text-muted-foreground flex flex-row items-center justify-center gap-2">
-            No account?{" "}
+            Don&apos;t have an account?{" "}
             <Link
               href="/signup"
               className="text-primary underline hover:text-primary/80 transition-colors"
