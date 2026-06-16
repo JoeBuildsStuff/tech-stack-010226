@@ -7,8 +7,8 @@ import {
   Html,
   Preview,
   Text,
-} from "npm:@react-email/components@0.0.22";
-import * as React from "npm:react@18.3.1";
+} from "@react-email/components";
+import * as React from "react";
 import {
   bodyWrapper,
   container,
@@ -17,9 +17,9 @@ import {
   hr,
   main,
   paragraph,
-} from "./email-styles.ts";
+} from "./email-styles";
 
-interface SecurityNotificationEmailProps {
+export interface SecurityNotificationEmailProps {
   productName: string;
   emailActionType: string;
   userName?: string;

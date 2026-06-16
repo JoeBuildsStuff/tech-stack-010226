@@ -49,3 +49,6 @@ next-env.d.ts
 /supabase/.temp/
 /supabase/.branches/
 /supabase/config.toml
+
+# react email exports
+/emails/export/

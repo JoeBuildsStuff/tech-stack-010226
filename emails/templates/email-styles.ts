@@ -39,6 +39,7 @@ export const buttonContainer = {
 export const button = {
   backgroundColor: "#0f172a",
   borderRadius: "6px",
+  boxSizing: "border-box" as const,
   color: "#fff",
   fontSize: "16px",
   fontWeight: "600",
@@ -65,6 +66,7 @@ export const code = {
 
 export const hr = {
   borderColor: "#e6ebf1",
+  borderStyle: "solid",
   margin: "30px 0",
 };
 

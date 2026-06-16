@@ -1,10 +1,10 @@
 import React from "npm:react@18.3.1";
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 import { Resend } from "npm:resend@6.12.4";
-import { renderAsync } from "npm:@react-email/components@0.0.22";
-import { AuthActionEmail } from "./_templates/auth-action-email.tsx";
-import { ReauthenticationEmail } from "./_templates/reauthentication-email.tsx";
-import { SecurityNotificationEmail } from "./_templates/security-notification-email.tsx";
+import { render } from "@react-email/components";
+import { AuthActionEmail } from "../../../emails/templates/auth-action-email.tsx";
+import { ReauthenticationEmail } from "../../../emails/templates/reauthentication-email.tsx";
+import { SecurityNotificationEmail } from "../../../emails/templates/security-notification-email.tsx";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY") as string);
 
@@ -71,6 +71,46 @@ interface SendJob {
   subject: string;
   component: React.ReactElement;
   idempotencyKey: string;
+}
+
+const resendRetryDelaysMs = [1000, 2000];
+
+function getErrorName(error: unknown) {
+  if (!error || typeof error !== "object" || !("name" in error)) {
+    return "";
+  }
+
+  return String((error as { name?: unknown }).name ?? "");
+}
+
+function getErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const { statusCode, status } = error as {
+    statusCode?: unknown;
+    status?: unknown;
+  };
+  const value = typeof statusCode === "number" ? statusCode : status;
+
+  return typeof value === "number" ? value : undefined;
+}
+
+function isRetryableResendError(error: unknown) {
+  const name = getErrorName(error);
+  const status = getErrorStatus(error);
+
+  return (
+    name === "rate_limit_exceeded" ||
+    name === "api_error" ||
+    status === 429 ||
+    (typeof status === "number" && status >= 500)
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getAuthActionSubject(actionType: string, token?: string) {
@@ -322,24 +362,37 @@ function buildSendJobs(payload: EmailPayload) {
 }
 
 async function sendEmail(job: SendJob) {
-  const html = await renderAsync(job.component);
-  const text = await renderAsync(job.component, { plainText: true });
+  const html = await render(job.component);
+  const text = await render(job.component, { plainText: true });
 
-  const { error } = await resend.emails.send(
-    {
-      from: fromAddress,
-      to: [job.to],
-      subject: job.subject,
-      html,
-      text,
-      replyTo,
-    },
-    { idempotencyKey: job.idempotencyKey }
-  );
+  for (let attempt = 0; attempt <= resendRetryDelaysMs.length; attempt++) {
+    const { error } = await resend.emails.send(
+      {
+        from: fromAddress,
+        to: [job.to],
+        subject: job.subject,
+        html,
+        text,
+        replyTo,
+      },
+      { idempotencyKey: job.idempotencyKey }
+    );
 
-  if (error) {
-    console.error("Resend error:", error);
-    throw error;
+    if (!error) {
+      return;
+    }
+
+    if (
+      attempt === resendRetryDelaysMs.length ||
+      !isRetryableResendError(error)
+    ) {
+      console.error("Resend error:", error);
+      throw error;
+    }
+
+    const delayMs = resendRetryDelaysMs[attempt];
+    console.warn(`Retrying Resend send in ${delayMs}ms:`, error);
+    await sleep(delayMs);
   }
 }
 
