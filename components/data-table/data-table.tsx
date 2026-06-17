@@ -286,6 +286,10 @@ export function DataTable<TData, TValue>({
     data,
     columns,
     pageCount: pageCount ?? -1,
+    getRowId: (row, index) => {
+      const rowData = row as Record<string, unknown>
+      return rowData.id == null ? String(index) : String(rowData.id)
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
@@ -323,6 +327,7 @@ export function DataTable<TData, TValue>({
               tableKey={tableKey}
               sorting={sorting}
               columnFilters={columnFilters}
+              rowSelection={rowSelection}
               deleteAction={deleteAction} 
               createAction={createAction}
               updateActionSingle={updateActionSingle}

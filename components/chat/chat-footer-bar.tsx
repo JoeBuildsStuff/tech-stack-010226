@@ -185,7 +185,7 @@ export function ChatFooterBar() {
           <Button
             variant="blue"
             size="sm"
-            className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1.5 px-3 text-xs"
             onClick={handleAskChat}
             disabled={isCreating}
           >

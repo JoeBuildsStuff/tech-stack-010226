@@ -1,24 +1,25 @@
-'use client';
+"use client";
 
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Copy, Check } from 'lucide-react';
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Copy, Check } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
-import { cn } from '@/lib/utils';
-import { type VariantProps } from 'class-variance-authority';
-import type { ComponentProps } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+} from "@/components/ui/tooltip";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { cn } from "@/lib/utils";
+import { type VariantProps } from "class-variance-authority";
+import type { ComponentProps } from "react";
+import { motion, AnimatePresence } from "motion/react";
 
-type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants> & {
-  asChild?: boolean;
-};
+type ButtonProps = ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  };
 
-interface CopyButtonProps extends Omit<ButtonProps, 'onClick'> {
+interface CopyButtonProps extends Omit<ButtonProps, "onClick"> {
   /** The text content to copy to clipboard */
   textToCopy: string;
   /** Custom success message for the toast */
@@ -44,14 +45,14 @@ export function CopyButton({
   successMessage,
   errorMessage,
   iconSize = 16,
-  tooltipText = 'Copy',
-  tooltipCopiedText = 'Copied!',
+  tooltipText = "Copy",
+  tooltipCopiedText = "Copied!",
   showTooltip = true,
   onCopySuccess,
   onCopyError,
   className,
-  variant = 'ghost',
-  size = 'icon',
+  variant = "ghost",
+  size = "icon",
   ...props
 }: CopyButtonProps) {
   const { isCopied, copyToClipboard } = useCopyToClipboard({
@@ -70,15 +71,15 @@ export function CopyButton({
 
   const ButtonComponent = (
     <motion.div
-    whileHover={{ scale: 1.2 }}
-    whileTap={{ scale: 0.8 }}
-    style={{}}
->
+      whileHover={{ scale: 1.2 }}
+      whileTap={{ scale: 0.8 }}
+      style={{}}
+    >
       <Button
         variant={variant}
         size={size}
         className={cn(
-          'h-fit w-fit p-2 m-0 text-muted-foreground hover:text-primary',
+          "h-fit w-fit p-2 m-0 text-muted-foreground hover:text-primary",
           className
         )}
         onClick={handleCopy}
@@ -123,7 +124,8 @@ export function CopyButton({
           side="bottom"
           align="center"
           sideOffset={4}
-          className="border border-border text-secondary-foreground bg-secondary"
+          className="text-secondary-foreground bg-secondary"
+          arrowClassName="bg-secondary fill-secondary"
         >
           {isCopied ? tooltipCopiedText : tooltipText}
         </TooltipContent>

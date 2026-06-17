@@ -3,6 +3,7 @@ import { DataTable } from "@/components/data-table/data-table"
 import type { DataTableState } from "@/lib/data-table"
 import { Contact } from "../_lib/validations"
 import { getContacts } from "../_lib/queries"
+import { deleteContacts } from "../_lib/actions"
 
 interface DataTableTableProps {
   initialState: DataTableState
@@ -80,6 +81,7 @@ export default async function DataTableTable({ initialState }: DataTableTablePro
         pageCount={pageCount}
         initialState={initialState}
         tableKey="table-1"
+        deleteAction={deleteContacts}
       />
   )
 }

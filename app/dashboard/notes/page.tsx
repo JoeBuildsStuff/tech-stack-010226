@@ -120,7 +120,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
             return (
               <Card
                 key={note.id}
-                className="hover:bg-secondary/50 p-2 border-none cursor-pointer"
+                className="cursor-pointer border-none p-2 shadow-none hover:bg-secondary/50"
               >
                 <Link
                   key={note.id}

@@ -264,6 +264,11 @@
   outline: none;
 }
 
+/* Keep the first Tiptap editor block from inheriting extra top spacing from prose typography. */
+.prose .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
 .tiptap p.is-editor-empty:first-child::before {
   color: hsl(var(--muted-foreground));
   content: attr(data-placeholder);

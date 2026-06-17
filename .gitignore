@@ -52,3 +52,6 @@ next-env.d.ts
 
 # react email exports
 /emails/export/
+
+# local reference repositories
+/.reference/

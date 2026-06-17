@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ColumnFiltersState, SortingState, Table } from "@tanstack/react-table"
+import { ColumnFiltersState, RowSelectionState, SortingState, Table } from "@tanstack/react-table"
 
 import DataTableFilter from "./data-table-filter"
 import DataTableSort from "./data-table-sort"
@@ -18,6 +18,7 @@ interface DataTableToolbarProps<TData> {
   tableKey: string
   sorting: SortingState
   columnFilters: ColumnFiltersState
+  rowSelection: RowSelectionState
   deleteAction?: (ids: string[]) => Promise<{ success: boolean; error?: string; deletedCount?: number }>
   createAction?: (data: Partial<TData>) => Promise<{ success: boolean; error?: string }>
   updateActionSingle?: (id: string, data: Partial<TData>) => Promise<{ success: boolean; error?: string }>
@@ -46,6 +47,7 @@ export default function DataTableToolbar<TData>({
   tableKey,
   sorting,
   columnFilters,
+  rowSelection,
   deleteAction,
   createAction,
   updateActionSingle,
@@ -55,14 +57,10 @@ export default function DataTableToolbar<TData>({
   customEditFormMulti,
 }: DataTableToolbarProps<TData>) {
   void tableKey
-  const selectedRows = table.getFilteredSelectedRowModel().rows.map((row) => row.original)
-  const selectedRowIds = table
-    .getFilteredSelectedRowModel()
-    .rows.map((row) => {
-      const rowData = row.original as Record<string, unknown>
-      return String(rowData.id || "")
-    })
-    .filter(Boolean)
+  const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original)
+  const selectedRowIds = Object.entries(rowSelection)
+    .filter(([, selected]) => selected)
+    .map(([id]) => id)
 
   const handleDeleteComplete = () => {
     table.resetRowSelection()

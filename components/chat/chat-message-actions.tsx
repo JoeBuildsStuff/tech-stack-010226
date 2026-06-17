@@ -104,7 +104,8 @@ export default function ChatMessageActions({
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="border border-border text-secondary-foreground bg-secondary"
+                className="text-secondary-foreground bg-secondary"
+                arrowClassName="bg-secondary fill-secondary"
               >
                 Upvote
               </TooltipContent>
@@ -124,7 +125,8 @@ export default function ChatMessageActions({
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="border border-border text-secondary-foreground bg-secondary"
+                className="text-secondary-foreground bg-secondary"
+                arrowClassName="bg-secondary fill-secondary"
               >
                 Downvote
               </TooltipContent>
@@ -144,7 +146,8 @@ export default function ChatMessageActions({
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="border border-border text-secondary-foreground bg-secondary"
+                className="text-secondary-foreground bg-secondary"
+                arrowClassName="bg-secondary fill-secondary"
               >
                 Retry
               </TooltipContent>
@@ -213,7 +216,8 @@ export default function ChatMessageActions({
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="border border-border text-secondary-foreground bg-secondary"
+                className="text-secondary-foreground bg-secondary"
+                arrowClassName="bg-secondary fill-secondary"
               >
                 Edit
               </TooltipContent>
