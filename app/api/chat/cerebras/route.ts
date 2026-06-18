@@ -29,6 +29,7 @@ interface CerebrasAPIRequest {
   clientOffset?: string
   clientNowIso?: string
   clientPath?: string
+  webSearchEnabled?: boolean
 }
 
 interface CerebrasAPIResponse {
@@ -142,6 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CerebrasA
       const clientOffset = (formData.get('client_utc_offset') as string) || ''
       const clientNowIso = (formData.get('client_now_iso') as string) || ''
       const clientPath = (formData.get('client_path') as string) || ''
+      const webSearchEnabled = formData.get('web_search_enabled') !== 'false'
       
       const context = contextStr && contextStr !== 'null' ? JSON.parse(contextStr) : null
       const messages = messagesStr ? JSON.parse(messagesStr) : []
@@ -175,6 +177,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CerebrasA
         clientOffset,
         clientNowIso,
         clientPath,
+        webSearchEnabled,
       }
     } else {
       // Handle JSON request
@@ -196,6 +199,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CerebrasA
       clientOffset = '',
       clientNowIso = '',
       clientPath = '',
+      webSearchEnabled = true,
     } = body
 
     // Validate input
@@ -228,6 +232,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CerebrasA
       clientOffset,
       clientNowIso,
       clientPath,
+      webSearchEnabled,
     )
 
     return NextResponse.json(response)
@@ -278,7 +283,8 @@ async function getCerebrasResponse(
   clientTz: string = '',
   clientOffset: string = '',
   clientNowIso: string = '',
-  clientPath: string = ''
+  clientPath: string = '',
+  webSearchEnabled: boolean = true
 ): Promise<CerebrasAPIResponse> {
   try {
     // 1. System Prompt
@@ -290,6 +296,10 @@ Web Search Capabilities:
 - Cite web sources as descriptive Markdown links in your response
 
 If a tool responds with a url to a record, include it in your response using markdown.`
+
+    if (!webSearchEnabled) {
+      systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
+    }
 
     // Provide user locale/timezone context to the model
     if (clientTz || clientOffset || clientNowIso) {
@@ -305,7 +315,11 @@ If a tool responds with a url to a record, include it in your response using mar
     }
 
     // 2. Convert tools to Cerebras format
-    const cerebrasTools = convertToolsToCerebrasFormat(availableTools)
+    const cerebrasTools = convertToolsToCerebrasFormat(
+      availableTools.filter(
+        (tool) => webSearchEnabled || (tool.name !== 'web_search' && tool.name !== 'web_scrape')
+      )
+    )
 
     // 3. Map history to Cerebras format (filter out system messages)
     type CerebrasMessage = 

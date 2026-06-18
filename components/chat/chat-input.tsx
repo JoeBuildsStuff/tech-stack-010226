@@ -10,6 +10,10 @@ import {
   Headphones,
   Image,
   FileImage,
+  Globe,
+  X,
+  ArrowUp,
+  Paperclip,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,10 +29,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { X } from "lucide-react";
-import { ArrowUp } from "lucide-react";
-import { Paperclip } from "lucide-react";
 import { LowMediumHighIcon } from "@/components/icons/low-medium-high";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import Spinner from "@/components/ui/spinner";
 
@@ -86,6 +92,7 @@ export function ChatInput() {
   const { sendMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
   const [selectedModel, setSelectedModel] = useState("gpt-5");
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [reasoningEffort, setReasoningEffort] = useState<
     "low" | "medium" | "high"
   >("low");
@@ -119,11 +126,18 @@ export function ChatInput() {
           messageContent,
           currentAttachments,
           selectedModel,
-          reasoningEffort
+          reasoningEffort,
+          { webSearchEnabled }
         );
       } else {
         // Use regular chat API (Anthropic)
-        await sendMessage(messageContent, currentAttachments, selectedModel);
+        await sendMessage(
+          messageContent,
+          currentAttachments,
+          selectedModel,
+          undefined,
+          { webSearchEnabled }
+        );
       }
     } finally {
       // Focus back to input
@@ -367,6 +381,30 @@ export function ChatInput() {
               >
                 <Paperclip className="size-4 shrink-0" />
               </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "w-8 rounded-full border-none bg-input/40 transition-colors duration-200",
+                      webSearchEnabled
+                        ? "text-blue-500 hover:text-blue-500"
+                        : "text-muted-foreground"
+                    )}
+                    onClick={() => setWebSearchEnabled((enabled) => !enabled)}
+                    disabled={isLoading}
+                    aria-label={`Web search ${webSearchEnabled ? "enabled" : "disabled"}`}
+                    aria-pressed={webSearchEnabled}
+                  >
+                    <Globe className="size-4 shrink-0" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Web search {webSearchEnabled ? "enabled" : "disabled"}
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Right side buttons */}

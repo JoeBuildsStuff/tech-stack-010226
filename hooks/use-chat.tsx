@@ -229,7 +229,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       context: PageContext | null,
       attachments?: Attachment[],
       model?: string,
-      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh"
+      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh",
+      webSearchEnabled = true
     ) => {
       const formData = new FormData();
       formData.append("message", content);
@@ -243,6 +244,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       if (reasoningEffort) {
         formData.append("reasoning_effort", reasoningEffort);
       }
+      formData.append("web_search_enabled", String(webSearchEnabled));
 
       // Attach client timezone context
       try {
@@ -344,7 +346,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       attachments?: Attachment[],
       model?: string,
       reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh",
-      options?: { skipUserAdd?: boolean }
+      options?: { skipUserAdd?: boolean; webSearchEnabled?: boolean }
     ) => {
       if (
         (!content.trim() && (!attachments || attachments.length === 0)) ||
@@ -481,6 +483,10 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             if (reasoningEffort) {
               cerebrasFormData.append("reasoning_effort", reasoningEffort);
             }
+            cerebrasFormData.append(
+              "web_search_enabled",
+              String(options?.webSearchEnabled ?? true)
+            );
 
             // Attach client timezone context
             try {
@@ -596,6 +602,10 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             if (reasoningEffort) {
               openaiFormData.append("reasoning_effort", reasoningEffort);
             }
+            openaiFormData.append(
+              "web_search_enabled",
+              String(options?.webSearchEnabled ?? true)
+            );
 
             // Attach client timezone context
             try {
@@ -612,7 +622,10 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               openaiFormData.append("client_tz", tz);
               openaiFormData.append("client_utc_offset", offset);
               openaiFormData.append("client_now_iso", localISO);
-              openaiFormData.append("client_path", window.location.pathname || "");
+              openaiFormData.append(
+                "client_path",
+                window.location.pathname || ""
+              );
             } catch {}
 
             // Add attachments if any
@@ -699,7 +712,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               currentContext,
               attachments,
               model,
-              reasoningEffort
+              reasoningEffort,
+              options?.webSearchEnabled ?? true
             );
           }
         }

@@ -30,6 +30,7 @@ interface ChatAPIRequest {
   clientOffset?: string
   clientNowIso?: string
   clientPath?: string
+  webSearchEnabled?: boolean
 }
 
 interface ChatAPIResponse {
@@ -185,6 +186,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       const clientOffset = ((formData.get('client_utc_offset') as string) || '').trim()
       const clientNowIso = ((formData.get('client_now_iso') as string) || '').trim()
       const clientPath = ((formData.get('client_path') as string) || '').trim()
+      const webSearchEnabled = formData.get('web_search_enabled') !== 'false'
       const attachmentCount = parseInt((formData.get('attachmentCount') as string) || '0', 10)
 
       const context = contextStr && contextStr !== 'null' ? JSON.parse(contextStr) : null
@@ -199,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
         if (file) attachments.push({ file, name, type, size })
       }
 
-      body = { message, context, messages, model, attachments, clientTz, clientOffset, clientNowIso, clientPath }
+      body = { message, context, messages, model, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled }
     } else {
       body = await request.json()
     }
@@ -214,6 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       clientOffset = '',
       clientNowIso = '',
       clientPath = '',
+      webSearchEnabled = true,
     } = body
 
     if (!message || typeof message !== 'string') {
@@ -230,6 +233,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       clientOffset,
       clientNowIso,
       clientPath,
+      webSearchEnabled,
     )
 
     return NextResponse.json(response)
@@ -264,6 +268,7 @@ async function getLLMResponse(
   clientOffset = '',
   clientNowIso = '',
   clientPath = '',
+  webSearchEnabled = true,
 ): Promise<ChatAPIResponse> {
   // 1) System prompt
   let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
@@ -274,6 +279,10 @@ Web Search Capabilities:
 - Cite web sources as descriptive Markdown links in your response
 
 If a tool responds with a url to a record, include it in your response using markdown.`
+
+  if (!webSearchEnabled) {
+    systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
+  }
 
   if (clientTz || clientOffset || clientNowIso) {
     systemPrompt += `
@@ -355,10 +364,12 @@ User Navigation Context:
 
   // 4) Tools: custom tools + web_search (server-side tool)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tools: any[] = [...availableFunctions]
+  const tools: any[] = availableFunctions.filter(
+    (tool) => webSearchEnabled || (tool.name !== 'web_search' && tool.name !== 'web_scrape'),
+  )
   // Firecrawl supplies the shared web_search tool when configured. Keep
   // Anthropic's native server tool as a Claude-only fallback.
-  if (!process.env.FIRECRAWL_API_KEY) {
+  if (webSearchEnabled && !process.env.FIRECRAWL_API_KEY) {
     tools.push({
       type: 'web_search_20250305',
       name: 'web_search',

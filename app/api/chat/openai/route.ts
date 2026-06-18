@@ -26,6 +26,7 @@ interface OpenAIAPIRequest {
   clientOffset?: string
   clientNowIso?: string
   clientPath?: string
+  webSearchEnabled?: boolean
 }
 
 interface OpenAIAPIResponse {
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       const clientOffset = (formData.get('client_utc_offset') as string) || ''
       const clientNowIso = (formData.get('client_now_iso') as string) || ''
       const clientPath = (formData.get('client_path') as string) || ''
+      const webSearchEnabled = formData.get('web_search_enabled') !== 'false'
       const attachmentCount = parseInt(formData.get('attachmentCount') as string || '0')
       
       const context = contextStr && contextStr !== 'null' ? JSON.parse(contextStr) : null
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
         }
       }
       
-      body = { message, context, messages, model, reasoningEffort, attachments, clientTz, clientOffset, clientNowIso, clientPath } as unknown as OpenAIAPIRequest
+      body = { message, context, messages, model, reasoningEffort, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled } as unknown as OpenAIAPIRequest
     } else {
       // Handle JSON request (backward compatibility)
       body = await request.json()
@@ -133,6 +135,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       clientOffset = '',
       clientNowIso = '',
       clientPath = '',
+      webSearchEnabled = true,
     } = body
 
     // Validate input
@@ -160,7 +163,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       clientTz,
       clientOffset,
       clientNowIso,
-      clientPath
+      clientPath,
+      webSearchEnabled
     )
 
     return NextResponse.json(response)
@@ -197,8 +201,10 @@ function formatFileSize(bytes: number): string {
 }
 
 // Convert Anthropic tools to OpenAI function format
-function convertToolsToOpenAI(): Tool[] {
-  return availableTools.map((tool): Tool => ({
+function convertToolsToOpenAI(webSearchEnabled: boolean): Tool[] {
+  return availableTools
+    .filter((tool) => webSearchEnabled || (tool.name !== 'web_search' && tool.name !== 'web_scrape'))
+    .map((tool): Tool => ({
     type: 'function',
     name: tool.name,
     description: tool.description,
@@ -231,7 +237,8 @@ async function getOpenAIResponse(
   clientTz: string = '',
   clientOffset: string = '',
   clientNowIso: string = '',
-  clientPath: string = ''
+  clientPath: string = '',
+  webSearchEnabled: boolean = true
 ): Promise<OpenAIAPIResponse> {
   try {
     // 1. System Prompt
@@ -247,6 +254,10 @@ Web Search Capabilities:
 - Cite web sources as descriptive Markdown links in your response
 
 If a tool responds with a url to a record, include it in your response using markdown.`
+
+    if (!webSearchEnabled) {
+      systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
+    }
     
     // Provide user locale/timezone context to the model
     if (clientTz || clientOffset || clientNowIso) {
@@ -309,7 +320,7 @@ If a tool responds with a url to a record, include it in your response using mar
     ]
 
     // 4. Prepare tools
-    const tools = convertToolsToOpenAI()
+    const tools = convertToolsToOpenAI(webSearchEnabled)
 
     // 5. Iterative tool calling with maximum of 5 iterations.
     let maxIterations = 5
