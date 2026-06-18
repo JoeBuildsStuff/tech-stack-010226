@@ -13,7 +13,7 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 ### 2. OpenAI Chat API (`/api/chat/openai`)
 - **Provider**: OpenAI
 - **Models**: GPT-5, GPT-5.4, GPT-5.4 Mini, GPT-5.4 Nano
-- **Features**: Function calling, file attachments, context awareness
+- **Features**: Function calling, Firecrawl web search, file attachments, context awareness
 - **File**: `openai/route.ts`
 
 ### 3. Cerebras Chat API (`/api/chat/cerebras`)
@@ -64,7 +64,10 @@ OPENAI_API_KEY=your_openai_api_key
 # Required for Cerebras
 CEREBRAS_API_KEY=your_cerebras_api_key
 
-# Optional for web search
+# Optional shared web search and scraping for every provider
+FIRECRAWL_API_KEY=fc-your_firecrawl_api_key
+
+# Claude-native fallback when Firecrawl is not configured
 WEB_SEARCH_MAX_USES=5
 ```
 

@@ -29,8 +29,14 @@ This directory contains tool definitions and execution logic for the chat API.
 - `notes_reply_to_comment`
   - Input: `noteId`, `threadId`, `content`
   - Output: created reply comment metadata
+- `web_search` (enabled when `FIRECRAWL_API_KEY` is configured)
+  - Input: `query`, optional `limit`, `recency`, and domain filters
+  - Output: current Firecrawl search results with titles, URLs, and descriptions
+- `web_scrape` (enabled when `FIRECRAWL_API_KEY` is configured)
+  - Input: public `url`, optional `maxChars`
+  - Output: clean Markdown and source metadata from Firecrawl
 
-All tools enforce Supabase auth and only operate on notes owned by the current user.
+Note tools enforce Supabase auth and only operate on notes owned by the current user. Firecrawl tools run server-side with bounded inputs and never expose the API key to the client.
 
 ## Notes Page Context
 

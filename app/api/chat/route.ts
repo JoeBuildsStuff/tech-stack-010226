@@ -269,9 +269,9 @@ async function getLLMResponse(
   let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
 
 Web Search Capabilities:
-- You have access to real-time web search for up-to-date information
-- Use web search when users ask about current information not in your knowledge base
-- Always cite sources from web search results in your responses
+- Use the available web tools for current, time-sensitive, or externally verifiable information
+- Use web_scrape when search result descriptions do not contain enough evidence
+- Cite web sources as descriptive Markdown links in your response
 
 If a tool responds with a url to a record, include it in your response using markdown.`
 
@@ -356,11 +356,15 @@ User Navigation Context:
   // 4) Tools: custom tools + web_search (server-side tool)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools: any[] = [...availableFunctions]
-  tools.push({
-    type: 'web_search_20250305',
-    name: 'web_search',
-    max_uses: parseInt(process.env.WEB_SEARCH_MAX_USES || '5', 10),
-  })
+  // Firecrawl supplies the shared web_search tool when configured. Keep
+  // Anthropic's native server tool as a Claude-only fallback.
+  if (!process.env.FIRECRAWL_API_KEY) {
+    tools.push({
+      type: 'web_search_20250305',
+      name: 'web_search',
+      max_uses: parseInt(process.env.WEB_SEARCH_MAX_USES || '5', 10),
+    })
+  }
 
   // 5) Loop controlled by stop_reason (maxIterations is only a fuse)
   const maxIterations = 5

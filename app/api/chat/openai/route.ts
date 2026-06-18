@@ -241,6 +241,11 @@ Image Processing Capabilities:
 - You can analyze and understand images that users upload
 - Extract relevant information from documents, screenshots, or images when users share them
 
+Web Search Capabilities:
+- Use the available web tools for current, time-sensitive, or externally verifiable information
+- Use web_scrape when search result descriptions do not contain enough evidence
+- Cite web sources as descriptive Markdown links in your response
+
 If a tool responds with a url to a record, include it in your response using markdown.`
     
     // Provide user locale/timezone context to the model
