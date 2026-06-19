@@ -164,11 +164,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       clientOffset,
       clientNowIso,
       clientPath,
-      webSearchEnabled
+      webSearchEnabled,
+      request.signal
     )
 
     return NextResponse.json(response)
   } catch (error) {
+    if (request.signal.aborted) {
+      return NextResponse.json({ message: 'Request cancelled' }, { status: 499 })
+    }
     console.error('OpenAI API error:', error)
     
     if (error instanceof Error) {
@@ -238,7 +242,8 @@ async function getOpenAIResponse(
   clientOffset: string = '',
   clientNowIso: string = '',
   clientPath: string = '',
-  webSearchEnabled: boolean = true
+  webSearchEnabled: boolean = true,
+  signal?: AbortSignal
 ): Promise<OpenAIAPIResponse> {
   try {
     // 1. System Prompt
@@ -340,6 +345,7 @@ If a tool responds with a url to a record, include it in your response using mar
     }> = []
 
     while (maxIterations > 0) {
+      signal?.throwIfAborted()
       const response = await openai.responses.create({
         model: model || 'gpt-5',
         instructions: systemPrompt,
@@ -348,7 +354,7 @@ If a tool responds with a url to a record, include it in your response using mar
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
-      })
+      }, { signal })
 
       previousResponseId = response.id
 
@@ -367,6 +373,7 @@ If a tool responds with a url to a record, include it in your response using mar
 
       nextInput = await Promise.all(
         toolCalls.map(async (toolCall) => {
+          signal?.throwIfAborted()
           let parsedArgs: Record<string, unknown>
           try {
             parsedArgs = JSON.parse(toolCall.arguments)
@@ -382,6 +389,7 @@ If a tool responds with a url to a record, include it in your response using mar
             client_now_iso: clientNowIso,
           }
           const functionResult = await executeFunctionCall(toolCall.name, augmentedArgs)
+          signal?.throwIfAborted()
           allToolResults.push(functionResult)
 
           allToolCalls.push({

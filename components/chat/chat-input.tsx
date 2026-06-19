@@ -13,6 +13,7 @@ import {
   Globe,
   X,
   ArrowUp,
+  Square,
   Paperclip,
 } from "lucide-react";
 
@@ -35,8 +36,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-import Spinner from "@/components/ui/spinner";
 
 export interface Attachment {
   id: string;
@@ -89,7 +88,7 @@ export function ChatInput() {
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { sendMessage } = useChat();
+  const { sendMessage, stopMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
   const [selectedModel, setSelectedModel] = useState("gpt-5");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
@@ -468,13 +467,24 @@ export function ChatInput() {
 
               {/* Send button */}
               <Button
-                onClick={handleSend}
+                type="button"
+                onClick={isLoading ? stopMessage : handleSend}
                 // disabled={!canSend}
                 size="sm"
                 variant="blue"
-                className="rounded-full border-none w-8 [&_svg]:!w-5 [&_svg]:!h-5"
+                className={cn(
+                  "rounded-full border-none w-8",
+                  isLoading
+                    ? "[&_svg]:!size-3"
+                    : "[&_svg]:!w-5 [&_svg]:!h-5"
+                )}
+                aria-label={isLoading ? "Stop response" : "Send message"}
               >
-                {isLoading ? <Spinner variant="blue" /> : <ArrowUp />}
+                {isLoading ? (
+                  <Square className="fill-current" />
+                ) : (
+                  <ArrowUp className="" />
+                )}
               </Button>
             </div>
           </div>

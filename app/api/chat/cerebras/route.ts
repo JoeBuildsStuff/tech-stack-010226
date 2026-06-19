@@ -233,10 +233,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<CerebrasA
       clientNowIso,
       clientPath,
       webSearchEnabled,
+      request.signal,
     )
 
     return NextResponse.json(response)
   } catch (error) {
+    if (request.signal.aborted) {
+      return NextResponse.json({ message: 'Request cancelled' }, { status: 499 })
+    }
     console.error('Cerebras API error:', error)
     
     // More specific error handling
@@ -284,7 +288,8 @@ async function getCerebrasResponse(
   clientOffset: string = '',
   clientNowIso: string = '',
   clientPath: string = '',
-  webSearchEnabled: boolean = true
+  webSearchEnabled: boolean = true,
+  signal?: AbortSignal
 ): Promise<CerebrasAPIResponse> {
   try {
     // 1. System Prompt
@@ -388,6 +393,7 @@ If a tool responds with a url to a record, include it in your response using mar
     const allReasoningSteps: string[] = []; // Collect reasoning from all intermediate responses
 
     while (maxIterations > 0) {
+      signal?.throwIfAborted();
       // 6. Make the API call
       if (stream) {
         // Handle streaming response (simplified - no tool calls in streaming mode)
@@ -399,15 +405,16 @@ If a tool responds with a url to a record, include it in your response using mar
           temperature: temperature,
           top_p: top_p,
           reasoning_effort: reasoning_effort
-        });
+        }, { signal });
 
         // Create a ReadableStream for the response
-        const readableStream = new ReadableStream({
+        const readableStream = new ReadableStream<Uint8Array>({
           async start(controller) {
             try {
               // Handle streaming response properly
               if (Symbol.asyncIterator in streamResponse) {
                 for await (const chunk of streamResponse) {
+                  signal?.throwIfAborted();
                   // Type assertion for Cerebras streaming response
                   const typedChunk = chunk as CerebrasStreamingChunk;
                   const content = typedChunk.choices?.[0]?.delta?.content || '';
@@ -440,7 +447,7 @@ If a tool responds with a url to a record, include it in your response using mar
           reasoning_effort: reasoning_effort,
           tools: cerebrasTools,
           // parallel_tool_calls: false // Disable parallel tool calls for compatibility
-        });
+        }, { signal });
 
         // Type assertion for Cerebras response
         const typedResponse = response as CerebrasResponse;
@@ -472,6 +479,7 @@ If a tool responds with a url to a record, include it in your response using mar
           // Execute all tools in parallel
           const toolResults = await Promise.all(
             message.tool_calls.map(async (toolCall) => {
+              signal?.throwIfAborted();
               const baseArgs = JSON.parse(toolCall.function.arguments);
               const augmentedArgs = {
                 ...baseArgs,
@@ -483,6 +491,7 @@ If a tool responds with a url to a record, include it in your response using mar
                 toolCall.function.name, 
                 augmentedArgs
               );
+              signal?.throwIfAborted();
               
               // Store tool call information with associated reasoning
               allToolCalls.push({
@@ -532,6 +541,7 @@ If a tool responds with a url to a record, include it in your response using mar
       message: 'I apologize, but I encountered an error processing your request. Please try again.',
     }
   } catch (error) {
+    if (signal?.aborted) throw error
     console.error('Cerebras API error:', error)
     throw new Error('Failed to get response from Cerebras API')
   }

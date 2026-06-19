@@ -72,9 +72,18 @@ interface ActionResponse {
 interface UseChatProps {
   onSendMessage?: (
     message: string,
-    attachments?: Attachment[]
+    attachments?: Attachment[],
+    signal?: AbortSignal
   ) => Promise<void>;
   onActionClick?: (action: ChatAction) => void;
+}
+
+let activeChatAbortController: AbortController | null = null;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }
 
 export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
@@ -94,6 +103,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
     setLoading,
     toggleChat,
     updatePageContext,
+    updateSessionTitle,
     // server-backed helpers
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
@@ -230,7 +240,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       attachments?: Attachment[],
       model?: string,
       reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh",
-      webSearchEnabled = true
+      webSearchEnabled = true,
+      signal?: AbortSignal
     ) => {
       const formData = new FormData();
       formData.append("message", content);
@@ -281,6 +292,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       const response = await fetch("/api/chat", {
         method: "POST",
         body: formData,
+        signal,
       });
 
       if (!response.ok) {
@@ -288,6 +300,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       }
 
       const result = await response.json();
+      signal?.throwIfAborted();
 
       // Add the assistant message with tool calls, citations, and reasoning if available
       const assistantMessage: Omit<ChatMessage, "id" | "timestamp"> = {
@@ -356,6 +369,41 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
 
       // Ensure we have a server-backed session first so optimistic add targets the right session
       const sid = await ensureSession();
+      const abortController = new AbortController();
+      activeChatAbortController = abortController;
+      const { signal } = abortController;
+
+      const stateBeforeSend = useChatStore.getState();
+      const sessionBeforeSend = stateBeforeSend.sessions.find(
+        (session) => session.id === sid
+      );
+      const shouldGenerateTitle =
+        !options?.skipUserAdd &&
+        Boolean(content.trim()) &&
+        sessionBeforeSend?.title === "New Chat" &&
+        !stateBeforeSend.messages.some((message) => message.role === "user");
+
+      if (shouldGenerateTitle) {
+        // This request intentionally runs independently of the main chat request.
+        void fetch("/api/chat/title", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sid, message: content.trim() }),
+        })
+          .then(async (response) => {
+            const result = (await response.json()) as {
+              title?: string;
+              error?: string;
+            };
+            if (!response.ok) {
+              throw new Error(result.error || `Title API error: ${response.status}`);
+            }
+            if (result.title) updateSessionTitle(sid, result.title);
+          })
+          .catch((error) => {
+            console.error("Failed to generate chat title:", error);
+          });
+      }
 
       // Optimistically add the user's message to the UI (before uploads/DB)
       let tempUserMessageId: string | null = null;
@@ -406,7 +454,11 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             const endpoint = a.type.startsWith("image/")
               ? "/api/images/upload"
               : "/api/files/upload";
-            const resp = await fetch(endpoint, { method: "POST", body: form });
+            const resp = await fetch(endpoint, {
+              method: "POST",
+              body: form,
+              signal,
+            });
             const j = await resp.json();
             if (!resp.ok || j.error)
               throw new Error(j.error || "Upload failed");
@@ -419,6 +471,9 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                 storage_path: filePath,
               });
           } catch (e) {
+            if (signal.aborted) {
+              break;
+            }
             console.error("Attachment upload failed:", e);
             toast.error("Attachment upload failed");
           }
@@ -445,6 +500,9 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
           }
           await refreshMessages(sid); // replaces the optimistic entry with canonical data
         } catch (err) {
+          if (activeChatAbortController === abortController) {
+            activeChatAbortController = null;
+          }
           // Roll back optimistic message on failure
           if (tempUserMessageId) deleteMessage(tempUserMessageId);
           console.error("Failed to persist user message:", err);
@@ -459,9 +517,10 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       if (options?.skipUserAdd) setLoading(true);
 
       try {
+        signal.throwIfAborted();
         // Call custom send handler if provided, otherwise use default API call
         if (onSendMessage) {
-          await onSendMessage(content, attachments);
+          await onSendMessage(content, attachments, signal);
         } else {
           // Determine which API to use based on model selection
           const isCerebrasModel = model?.startsWith("gpt-oss-120b");
@@ -535,6 +594,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             const response = await fetch("/api/chat/cerebras", {
               method: "POST",
               body: cerebrasFormData,
+              signal,
             });
 
             if (!response.ok) {
@@ -542,6 +602,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             }
 
             const result = await response.json();
+            signal.throwIfAborted();
 
             // Add the assistant message with tool calls, citations, and reasoning if available
             const assistantMessage: Omit<ChatMessage, "id" | "timestamp"> = {
@@ -654,6 +715,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             const response = await fetch("/api/chat/openai", {
               method: "POST",
               body: openaiFormData,
+              signal,
             });
 
             if (!response.ok) {
@@ -661,6 +723,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             }
 
             const result = await response.json();
+            signal.throwIfAborted();
 
             // Add the assistant message with tool calls, citations, and reasoning if available
             const assistantMessage: Omit<ChatMessage, "id" | "timestamp"> = {
@@ -713,11 +776,13 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               attachments,
               model,
               reasoningEffort,
-              options?.webSearchEnabled ?? true
+              options?.webSearchEnabled ?? true,
+              signal
             );
           }
         }
       } catch (error) {
+        if (signal.aborted || isAbortError(error)) return;
         console.error("Failed to send message:", error);
         const description =
           error instanceof Error ? error.message : "Please try again.";
@@ -730,6 +795,9 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
         });
         await refreshMessages(sid);
       } finally {
+        if (activeChatAbortController === abortController) {
+          activeChatAbortController = null;
+        }
         // Always clear loading state
         setLoading(false);
       }
@@ -744,8 +812,15 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       refreshMessages,
       addMessage,
       deleteMessage,
+      updateSessionTitle,
     ]
   );
+
+  const stopMessage = useCallback(() => {
+    activeChatAbortController?.abort();
+    activeChatAbortController = null;
+    setLoading(false);
+  }, [setLoading]);
 
   // Handle action clicks
   const handleActionClick = useCallback(
@@ -827,6 +902,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
 
     // Actions
     sendMessage,
+    stopMessage,
     addMessage,
     updateMessage,
     deleteMessage,

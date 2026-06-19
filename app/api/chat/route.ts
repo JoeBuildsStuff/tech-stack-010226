@@ -234,10 +234,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       clientNowIso,
       clientPath,
       webSearchEnabled,
+      request.signal,
     )
 
     return NextResponse.json(response)
   } catch (error) {
+    if (request.signal.aborted) {
+      return NextResponse.json({ message: 'Request cancelled' }, { status: 499 })
+    }
     console.error('Chat API error:', error)
     if (error instanceof Error) {
       if (error.message.includes('ANTHROPIC_API_KEY')) {
@@ -269,6 +273,7 @@ async function getLLMResponse(
   clientNowIso = '',
   clientPath = '',
   webSearchEnabled = true,
+  signal?: AbortSignal,
 ): Promise<ChatAPIResponse> {
   // 1) System prompt
   let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
@@ -386,13 +391,14 @@ User Navigation Context:
   const allToolCalls: NonNullable<ChatAPIResponse['toolCalls']> = []
 
   while (iteration < maxIterations) {
+    signal?.throwIfAborted()
     const resp = await anthropic.messages.create({
       model: model || 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: systemPrompt,
       tools,
       messages: currentMessages,
-    })
+    }, { signal })
 
     const stopReason = resp.stop_reason // <- drive behavior from this
     const content = resp.content
@@ -446,6 +452,7 @@ User Navigation Context:
     if (stopReason === 'tool_use' || toolUseBlocks.length > 0) {
       const toolResults = await Promise.all(
         toolUseBlocks.map(async (tb) => {
+          signal?.throwIfAborted()
           const augmentedInput = {
             ...(tb.input as Record<string, unknown>),
             client_tz: clientTz,
@@ -453,6 +460,7 @@ User Navigation Context:
             client_now_iso: clientNowIso,
           }
           const result = await executeFunctionCall(tb.name, augmentedInput)
+          signal?.throwIfAborted()
           allToolResults.push(result)
           allToolCalls.push({
             id: tb.id,
