@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { ChatMessage, ChatMessageLoading } from "./chat-message";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessagesSquare } from "lucide-react";
 import type { ChatAction } from "@/types/chat";
 
@@ -15,13 +14,16 @@ export function ChatMessagesList({
   onActionClick,
 }: ChatMessagesListProps = {}) {
   const { messages, isLoading } = useChatStore();
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive or loading state changes
+  // Scroll the enclosing chat viewport directly. scrollIntoView() would also
+  // scroll other ancestors, which can shift the page behind the chat panel.
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    const viewport = messagesEndRef.current?.closest<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    );
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
     }
   }, [messages, isLoading]);
 
@@ -42,22 +44,20 @@ export function ChatMessagesList({
   }
 
   return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1 px-0">
-      <div className="space-y-0 overflow-hidden">
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            onActionClick={onActionClick}
-          />
-        ))}
+    <div className="space-y-0">
+      {messages.map((message) => (
+        <ChatMessage
+          key={message.id}
+          message={message}
+          onActionClick={onActionClick}
+        />
+      ))}
 
-        {/* Show loading placeholder while waiting for API response */}
-        {isLoading && <ChatMessageLoading />}
+      {/* Show loading placeholder while waiting for API response */}
+      {isLoading && <ChatMessageLoading />}
 
-        {/* Invisible element to scroll to */}
-        <div ref={messagesEndRef} className="h-1" />
-      </div>
-    </ScrollArea>
+      {/* Invisible element marking the bottom of the message list */}
+      <div ref={messagesEndRef} className="h-1" />
+    </div>
   );
 }

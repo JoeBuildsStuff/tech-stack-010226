@@ -7,7 +7,7 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatHistory } from "@/components/chat/chat-history";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollFadeArea } from "@/components/scroll-fade-area";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -97,11 +97,9 @@ export function ChatPanel() {
 
           {/* Messages Area */}
           <div className="flex-1 flex flex-col min-h-0">
-            <ScrollArea className="flex-1 h-full">
-              <div className="p-3">
-                <ChatMessagesList onActionClick={handleActionClick} />
-              </div>
-            </ScrollArea>
+            <ScrollFadeArea className="flex-1" contentClassName="p-3">
+              <ChatMessagesList onActionClick={handleActionClick} />
+            </ScrollFadeArea>
           </div>
 
           {/* Input Area */}

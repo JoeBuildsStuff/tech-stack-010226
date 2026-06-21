@@ -4,7 +4,7 @@ import { useChatStore } from "@/lib/chat/chat-store";
 import { useChat } from "@/hooks/use-chat";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollFadeArea } from "@/components/scroll-fade-area";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PictureInPicture2, PanelRight, LaptopMinimal } from "lucide-react";
@@ -114,11 +114,9 @@ export function ChatFullPage() {
       <div className="flex-1 flex flex-col min-h-0 max-w-3xl mx-auto w-full">
         {/* Messages Area */}
         <div className="flex-1 flex flex-col min-h-0">
-          <ScrollArea className="flex-1 h-full">
-            <div className="">
-              <ChatMessagesList onActionClick={handleActionClick} />
-            </div>
-          </ScrollArea>
+          <ScrollFadeArea className="flex-1">
+            <ChatMessagesList onActionClick={handleActionClick} />
+          </ScrollFadeArea>
         </div>
         {/* Input Area */}
         <div className="">
