@@ -274,8 +274,19 @@
   border-color: var(--border);
 }
 
+/* Keep block quotes aligned with shared UI colors and omit typography's quote glyphs. */
+.prose .ProseMirror blockquote {
+  border-inline-start-color: var(--border);
+  color: var(--foreground);
+}
+
+.prose .ProseMirror blockquote p:first-of-type::before,
+.prose .ProseMirror blockquote p:last-of-type::after {
+  content: none;
+}
+
 .tiptap p.is-editor-empty:first-child::before {
-  color: hsl(var(--muted-foreground));
+  color: var(--muted-foreground);
   content: attr(data-placeholder);
   float: left;
   height: 0;

@@ -41,6 +41,7 @@ import { CommentComposerPopover } from "@/components/tiptap/comment-composer-pop
 import { CommentsPanel } from "@/components/tiptap/comments-panel";
 import type { ThreadVisibilityFilters } from "@/components/tiptap/comment-thread-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SlashCommandMenu } from "@/components/tiptap/slash-command-menu";
 
 const lowlight = createLowlight(common);
 const DEFAULT_SHOW_COMMENTS = false;
@@ -357,6 +358,7 @@ const Tiptap = ({
               />
             </div>
           </ScrollArea>
+          <SlashCommandMenu editor={editor} />
         </TooltipProvider>
 
         {commentsEnabled && composerSelection ? (
