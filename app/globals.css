@@ -269,6 +269,11 @@
   margin-top: 0;
 }
 
+/* Match editor horizontal rules to the shared Separator color token. */
+.prose .ProseMirror hr {
+  border-color: var(--border);
+}
+
 .tiptap p.is-editor-empty:first-child::before {
   color: hsl(var(--muted-foreground));
   content: attr(data-placeholder);
