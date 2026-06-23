@@ -13,7 +13,7 @@ import { TableCell } from "@tiptap/extension-table/cell";
 import { TableHeader } from "@tiptap/extension-table/header";
 import { FileNode } from "@/components/tiptap/file-node";
 import { createLowlight, common } from "lowlight";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TiptapProps } from "./types";
 import { Image } from "@tiptap/extension-image";
 import { CustomImageView } from "./custom-image-view";
@@ -42,6 +42,7 @@ import { CommentsPanel } from "@/components/tiptap/comments-panel";
 import type { ThreadVisibilityFilters } from "@/components/tiptap/comment-thread-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SlashCommandMenu } from "@/components/tiptap/slash-command-menu";
+import { TableHoverControls } from "@/components/tiptap/table-hover-controls";
 
 const lowlight = createLowlight(common);
 const DEFAULT_SHOW_COMMENTS = false;
@@ -66,6 +67,7 @@ const Tiptap = ({
   commentsDocumentId,
 }: TiptapProps) => {
   const commentsEnabled = Boolean(commentsDocumentId);
+  const editorContentRef = useRef<HTMLDivElement | null>(null);
   const [internalShowComments, setInternalShowComments] = useState(
     DEFAULT_SHOW_COMMENTS
   );
@@ -351,10 +353,17 @@ const Tiptap = ({
             ))}
 
           <ScrollArea className="flex-1 min-h-0">
-            <div className="py-2 px-6 prose prose-base dark:prose-invert max-w-none">
+            <div
+              ref={editorContentRef}
+              className="relative py-2 pl-6 pr-14 pb-10 prose prose-base dark:prose-invert max-w-none"
+            >
               <EditorContent
                 editor={editor}
                 className="[&_a:hover]:cursor-pointer"
+              />
+              <TableHoverControls
+                editor={editor}
+                containerRef={editorContentRef}
               />
             </div>
           </ScrollArea>
