@@ -1,6 +1,7 @@
 "use client";
 
 import { useEditor, EditorContent, ReactNodeViewRenderer } from "@tiptap/react";
+import { mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Underline } from "@tiptap/extension-underline";
 import { TextAlign } from "@tiptap/extension-text-align";
@@ -50,6 +51,90 @@ const DEFAULT_SHOW_COMMENTS = false;
 const CustomCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlock);
+  },
+});
+
+function tableCellAlignmentAttributes() {
+  return {
+    horizontalAlign: {
+      default: null,
+      parseHTML: (element: HTMLElement) =>
+        element.style.textAlign || element.getAttribute("data-horizontal-align"),
+      renderHTML: (attributes: { horizontalAlign?: string | null }) =>
+        attributes.horizontalAlign
+          ? {
+              "data-horizontal-align": attributes.horizontalAlign,
+              style: `text-align: ${attributes.horizontalAlign};`,
+            }
+          : {},
+    },
+    verticalAlign: {
+      default: null,
+      parseHTML: (element: HTMLElement) =>
+        element.style.verticalAlign || element.getAttribute("data-vertical-align"),
+      renderHTML: (attributes: { verticalAlign?: string | null }) =>
+        attributes.verticalAlign
+          ? {
+              "data-vertical-align": attributes.verticalAlign,
+              style: `vertical-align: ${attributes.verticalAlign};`,
+            }
+          : {},
+    },
+  };
+}
+
+function mergeStyleAttributes(
+  ...attributeSets: Array<Record<string, unknown> | null | undefined>
+) {
+  const merged = mergeAttributes(
+    ...attributeSets.map((attributes) => {
+      if (!attributes) {
+        return {};
+      }
+
+      const rest = { ...attributes };
+      delete rest.style;
+
+      return rest;
+    })
+  );
+  const style = attributeSets
+    .map((attributes) => attributes?.style)
+    .filter((style): style is string => typeof style === "string" && style.length > 0)
+    .join(" ");
+
+  return style ? { ...merged, style } : merged;
+}
+
+const AlignedTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      ...tableCellAlignmentAttributes(),
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "td",
+      mergeStyleAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
+  },
+});
+
+const AlignedTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      ...tableCellAlignmentAttributes(),
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "th",
+      mergeStyleAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 });
 
@@ -151,8 +236,8 @@ const Tiptap = ({
         resizable: true,
       }),
       TableRow,
-      TableCell,
-      TableHeader,
+      AlignedTableCell,
+      AlignedTableHeader,
       Gapcursor,
       ...(enableFileNodes
         ? [

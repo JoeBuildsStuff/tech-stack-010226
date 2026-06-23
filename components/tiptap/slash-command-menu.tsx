@@ -20,7 +20,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -144,13 +143,12 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-      {filteredCommands.length ? COMMAND_GROUPS.map((group, groupIndex) => {
+      {filteredCommands.length ? COMMAND_GROUPS.map((group) => {
         const commands = filteredCommands.filter((command) => command.group === group);
         if (!commands.length) return null;
 
         return (
           <div key={group}>
-            {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuLabel className="text-xs text-muted-foreground">{group}</DropdownMenuLabel>
             <DropdownMenuGroup>
               {commands.map((command) => {
