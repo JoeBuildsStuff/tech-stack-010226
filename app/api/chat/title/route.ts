@@ -7,6 +7,14 @@ import { createClient } from "@/lib/supabase/server";
 const TITLE_MODEL = "gpt-oss-120b";
 const DEFAULT_TITLE = "New Chat";
 
+type NonStreamingTitleCompletion = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+};
+
 function cleanTitle(value: string): string {
   return value
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const cerebras = new Cerebras({ apiKey });
-    const completion = await cerebras.chat.completions.create({
+    const completion = (await cerebras.chat.completions.create({
       model: TITLE_MODEL,
       messages: [
         {
@@ -82,7 +90,7 @@ export async function POST(request: NextRequest) {
       max_completion_tokens: 40,
       temperature: 0.2,
       stream: false,
-    });
+    })) as NonStreamingTitleCompletion;
 
     const generated = completion.choices?.[0]?.message?.content;
     const title = cleanTitle(typeof generated === "string" ? generated : "");

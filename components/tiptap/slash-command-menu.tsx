@@ -140,7 +140,6 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
         side="bottom"
         sideOffset={0}
         className="w-52"
-        onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
       {filteredCommands.length ? COMMAND_GROUPS.map((group) => {
