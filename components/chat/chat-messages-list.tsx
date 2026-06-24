@@ -15,6 +15,10 @@ export function ChatMessagesList({
 }: ChatMessagesListProps = {}) {
   const { messages, isLoading } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMessage = messages[messages.length - 1];
+  const shouldShowLoading =
+    isLoading &&
+    !(lastMessage?.role === "assistant" && lastMessage.content.trim());
 
   // Scroll the enclosing chat viewport directly. scrollIntoView() would also
   // scroll other ancestors, which can shift the page behind the chat panel.
@@ -54,7 +58,7 @@ export function ChatMessagesList({
       ))}
 
       {/* Show loading placeholder while waiting for API response */}
-      {isLoading && <ChatMessageLoading />}
+      {shouldShowLoading && <ChatMessageLoading />}
 
       {/* Invisible element marking the bottom of the message list */}
       <div ref={messagesEndRef} className="h-1" />

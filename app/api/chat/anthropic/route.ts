@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { ChatMessage, PageContext } from '@/types/chat'
 import Anthropic from '@anthropic-ai/sdk'
-import { availableTools, toolExecutors } from '../tools'
+import { availableTools, toolExecutors, type ToolExecutionContext } from '../tools'
 import { createClient as supabaseClient } from '@/lib/supabase/server';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ interface ChatAPIRequest {
   clientNowIso?: string
   clientPath?: string
   webSearchEnabled?: boolean
+  stream?: boolean
 }
 
 interface ChatAPIResponse {
@@ -82,11 +83,12 @@ const availableFunctions = availableTools
 async function executeFunctionCall(
   functionName: string,
   parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const executor = (toolExecutors as Record<string, (args: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>>)[functionName]
+    const executor = (toolExecutors as Record<string, (args: Record<string, unknown>, context?: ToolExecutionContext) => Promise<{ success: boolean; data?: unknown; error?: string }>>)[functionName]
     if (!executor) return { success: false, error: `Unknown function: ${functionName}` }
-    return await executor(parameters)
+    return await executor(parameters, context)
   } catch (error) {
     console.error('Function execution error:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' }
@@ -103,6 +105,32 @@ interface TextBlock {
     title?: string
     cited_text?: string
   }>
+}
+
+interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+interface ServerToolUseBlock {
+  type: 'server_tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+interface WebSearchResultBlock {
+  type: 'web_search_tool_result'
+  tool_use_id: string
+  content: unknown
+}
+
+const encoder = new TextEncoder()
+
+function encodeSSE(event: string, data: unknown): Uint8Array {
+  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
 function buildChatApiResponse(
@@ -153,7 +181,7 @@ function buildChatApiResponse(
 // ─────────────────────────────────────────────────────────────────────────────
 // Route
 // ─────────────────────────────────────────────────────────────────────────────
-export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIResponse>> {
+export async function POST(request: NextRequest): Promise<Response> {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
@@ -187,6 +215,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       const clientNowIso = ((formData.get('client_now_iso') as string) || '').trim()
       const clientPath = ((formData.get('client_path') as string) || '').trim()
       const webSearchEnabled = formData.get('web_search_enabled') !== 'false'
+      const stream = formData.get('stream') === 'true'
       const attachmentCount = parseInt((formData.get('attachmentCount') as string) || '0', 10)
 
       const context = contextStr && contextStr !== 'null' ? JSON.parse(contextStr) : null
@@ -201,7 +230,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
         if (file) attachments.push({ file, name, type, size })
       }
 
-      body = { message, context, messages, model, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled }
+      body = { message, context, messages, model, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled, stream }
     } else {
       body = await request.json()
     }
@@ -217,10 +246,32 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       clientNowIso = '',
       clientPath = '',
       webSearchEnabled = true,
+      stream = false,
     } = body
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ message: 'Invalid message content' }, { status: 400 })
+    }
+
+    const toolContext: ToolExecutionContext = {
+      appBaseUrl: request.nextUrl.origin,
+    }
+
+    if (stream) {
+      return streamLLMResponse({
+        history: messages,
+        newUserMessage: message,
+        context: context || null,
+        attachments,
+        model,
+        clientTz,
+        clientOffset,
+        clientNowIso,
+        clientPath,
+        webSearchEnabled,
+        toolContext,
+        signal: request.signal,
+      })
     }
 
     const response = await getLLMResponse(
@@ -234,6 +285,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatAPIRe
       clientNowIso,
       clientPath,
       webSearchEnabled,
+      toolContext,
       request.signal,
     )
 
@@ -273,6 +325,7 @@ async function getLLMResponse(
   clientNowIso = '',
   clientPath = '',
   webSearchEnabled = true,
+  toolContext?: ToolExecutionContext,
   signal?: AbortSignal,
 ): Promise<ChatAPIResponse> {
   // 1) System prompt
@@ -404,27 +457,6 @@ User Navigation Context:
     const stopReason = resp.stop_reason // <- drive behavior from this
     const content = resp.content
 
-    // Blocks
-    interface ToolUseBlock {
-      type: 'tool_use'
-      id: string
-      name: string
-      input: Record<string, unknown>
-    }
-    
-    interface ServerToolUseBlock {
-      type: 'server_tool_use'
-      id: string
-      name: string
-      input: Record<string, unknown>
-    }
-    
-    interface WebSearchResultBlock {
-      type: 'web_search_tool_result'
-      tool_use_id: string
-      content: unknown
-    }
-    
     const textBlocks = content.filter((b) => b.type === 'text') as TextBlock[]
     const toolUseBlocks = content.filter((b) => b.type === 'tool_use') as ToolUseBlock[]
     const serverToolUseBlocks = content.filter((b) => b.type === 'server_tool_use') as ServerToolUseBlock[]
@@ -460,7 +492,7 @@ User Navigation Context:
             client_utc_offset: clientOffset,
             client_now_iso: clientNowIso,
           }
-          const result = await executeFunctionCall(tb.name, augmentedInput)
+          const result = await executeFunctionCall(tb.name, augmentedInput, toolContext)
           signal?.throwIfAborted()
           allToolResults.push(result)
           allToolCalls.push({
@@ -512,4 +544,268 @@ User Navigation Context:
     actions: [],
     toolCalls: allToolCalls.length ? allToolCalls : undefined,
   }
+}
+
+function streamLLMResponse({
+  history,
+  newUserMessage,
+  context,
+  attachments = [],
+  model,
+  clientTz = '',
+  clientOffset = '',
+  clientNowIso = '',
+  clientPath = '',
+  webSearchEnabled = true,
+  toolContext,
+  signal,
+}: {
+  history: ChatMessage[]
+  newUserMessage: string
+  context: PageContext | null
+  attachments?: Array<{ file: File; name: string; type: string; size: number }>
+  model?: string
+  clientTz?: string
+  clientOffset?: string
+  clientNowIso?: string
+  clientPath?: string
+  webSearchEnabled?: boolean
+  toolContext?: ToolExecutionContext
+  signal?: AbortSignal
+}): Response {
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false
+      const send = (event: string, data: unknown) => {
+        if (!closed) controller.enqueue(encodeSSE(event, data))
+      }
+
+      try {
+        let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
+
+Web Search Capabilities:
+- Use the available web tools for current, time-sensitive, or externally verifiable information
+- Use web_scrape when search result descriptions do not contain enough evidence
+- Cite web sources as descriptive Markdown links in your response
+
+If a tool responds with a url to a record, include it in your response using markdown.
+When linking to app records in markdown, use the exact absolute URL returned by the tool. Do not rewrite it as a relative path.`
+
+        if (!webSearchEnabled) {
+          systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
+        }
+
+        if (clientTz || clientOffset || clientNowIso) {
+          systemPrompt += `
+
+User Locale Context:
+- Timezone: ${clientTz || 'unknown'}
+- UTC offset (at request): ${clientOffset || 'unknown'}
+- Local time at request: ${clientNowIso || 'unknown'}`
+        }
+
+        if (clientPath) {
+          systemPrompt += `
+
+User Navigation Context:
+- Current path: ${clientPath}
+- If the path is /dashboard/notes/{id}, use that {id} as noteId for note tools.`
+        }
+
+        if (context) {
+          systemPrompt += `
+
+## Current Page Context:
+- Total items: ${context.totalCount}
+- Current filters: ${JSON.stringify(context.currentFilters, null, 2)}
+- Current sorting: ${JSON.stringify(context.currentSort, null, 2)}
+- Visible data sample: ${JSON.stringify(context.visibleData.slice(0, 3), null, 2)}`
+        }
+
+        const anthropicHistory: Anthropic.MessageParam[] = history
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+
+        const newUserContentBlocks: Anthropic.ContentBlockParam[] = [{ type: 'text', text: newUserMessage }]
+        for (const attachment of attachments) {
+          if (attachment.type.startsWith('image/')) {
+            const arrayBuffer = await attachment.file.arrayBuffer()
+            const base64 = Buffer.from(arrayBuffer).toString('base64')
+            let mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | undefined
+            switch (attachment.type) {
+              case 'image/jpeg':
+              case 'image/jpg':
+                mediaType = 'image/jpeg'
+                break
+              case 'image/png':
+                mediaType = 'image/png'
+                break
+              case 'image/gif':
+                mediaType = 'image/gif'
+                break
+              case 'image/webp':
+                mediaType = 'image/webp'
+                break
+            }
+            if (mediaType) {
+              newUserContentBlocks.push({
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: base64 },
+              })
+            } else {
+              newUserContentBlocks.push({
+                type: 'text',
+                text: `\n\nUnsupported image format: ${attachment.name} (${attachment.type}, ${formatFileSize(attachment.size)})`,
+              })
+            }
+          } else {
+            newUserContentBlocks.push({
+              type: 'text',
+              text: `\n\nFile attachment: ${attachment.name} (${attachment.type}, ${formatFileSize(attachment.size)})`,
+            })
+          }
+        }
+
+        const currentMessages: Anthropic.MessageParam[] = [
+          ...anthropicHistory,
+          { role: 'user', content: newUserContentBlocks },
+        ]
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tools: any[] = availableFunctions.filter(
+          (tool) => webSearchEnabled || (tool.name !== 'web_search' && tool.name !== 'web_scrape'),
+        )
+        if (webSearchEnabled && !process.env.FIRECRAWL_API_KEY) {
+          tools.push({
+            type: 'web_search_20250305',
+            name: 'web_search',
+            max_uses: parseInt(process.env.WEB_SEARCH_MAX_USES || '5', 10),
+          })
+        }
+
+        const maxIterations = 5
+        let iteration = 0
+        const allToolResults: Array<{ success: boolean; data?: unknown; error?: string }> = []
+        const allToolCalls: NonNullable<ChatAPIResponse['toolCalls']> = []
+
+        while (iteration < maxIterations) {
+          signal?.throwIfAborted()
+          const stream = anthropic.messages.stream({
+            model: model || 'claude-sonnet-4-6',
+            max_tokens: 2048,
+            system: systemPrompt,
+            tools,
+            messages: currentMessages,
+          }, { signal })
+
+          stream.on('text', (textDelta) => {
+            send('delta', { delta: textDelta })
+          })
+
+          const resp = await stream.finalMessage()
+          signal?.throwIfAborted()
+          const stopReason = resp.stop_reason
+          const content = resp.content
+
+          const textBlocks = content.filter((b) => b.type === 'text') as TextBlock[]
+          const toolUseBlocks = content.filter((b) => b.type === 'tool_use') as ToolUseBlock[]
+          const serverToolUseBlocks = content.filter((b) => b.type === 'server_tool_use') as ServerToolUseBlock[]
+          const webSearchResultBlocks = content.filter((b) => b.type === 'web_search_tool_result') as WebSearchResultBlock[]
+
+          const reasoningText = textBlocks.map((b) => b.text).join(' ').trim()
+
+          if (serverToolUseBlocks.length) {
+            for (const st of serverToolUseBlocks) {
+              const correspondingResult = webSearchResultBlocks.find((r) => r.tool_use_id === st.id)
+              allToolCalls.push({
+                id: st.id,
+                name: st.name,
+                arguments: (st.input as Record<string, unknown>) || {},
+                result: correspondingResult
+                  ? { success: true, data: correspondingResult.content || [] }
+                  : undefined,
+                reasoning: st.name === 'web_search' ? undefined : (reasoningText || undefined),
+              })
+            }
+          }
+
+          if (stopReason === 'tool_use' || toolUseBlocks.length > 0) {
+            const toolResults = await Promise.all(
+              toolUseBlocks.map(async (tb) => {
+                signal?.throwIfAborted()
+                const augmentedInput = {
+                  ...(tb.input as Record<string, unknown>),
+                  client_tz: clientTz,
+                  client_utc_offset: clientOffset,
+                  client_now_iso: clientNowIso,
+                }
+                const result = await executeFunctionCall(tb.name, augmentedInput, toolContext)
+                signal?.throwIfAborted()
+                allToolResults.push(result)
+                allToolCalls.push({
+                  id: tb.id,
+                  name: tb.name,
+                  arguments: augmentedInput,
+                  result,
+                  reasoning: reasoningText || undefined,
+                })
+                return {
+                  type: 'tool_result' as const,
+                  tool_use_id: tb.id,
+                  content: result.success ? JSON.stringify(result.data) : result.error || 'Unknown error',
+                }
+              }),
+            )
+
+            currentMessages.push({ role: 'assistant', content })
+            currentMessages.push({ role: 'user', content: toolResults })
+            iteration++
+            continue
+          }
+
+          if (stopReason === 'pause_turn') {
+            currentMessages.push({ role: 'assistant', content })
+            iteration++
+            continue
+          }
+
+          if (
+            stopReason === 'end_turn' ||
+            stopReason === 'stop_sequence' ||
+            stopReason === 'max_tokens' ||
+            stopReason === 'refusal' ||
+            stopReason == null
+          ) {
+            send('done', buildChatApiResponse(resp, allToolCalls, allToolResults))
+            return
+          }
+        }
+
+        send('done', {
+          message: 'I couldn’t complete the request within the tool-calling limit.',
+          actions: [],
+          toolCalls: allToolCalls.length ? allToolCalls : undefined,
+        } satisfies ChatAPIResponse)
+      } catch (error) {
+        if (!signal?.aborted) {
+          console.error('Anthropic streaming error:', error)
+          send('error', {
+            message: error instanceof Error ? error.message : 'Failed to get response from Anthropic API',
+          })
+        }
+      } finally {
+        closed = true
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

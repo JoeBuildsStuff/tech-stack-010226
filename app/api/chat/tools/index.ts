@@ -26,6 +26,10 @@ const firecrawlTools: Anthropic.Tool[] = process.env.FIRECRAWL_API_KEY
   ? [firecrawlSearchTool, firecrawlScrapeTool]
   : []
 
+export type ToolExecutionContext = {
+  appBaseUrl?: string
+}
+
 // Export all tool definitions - add your project-specific tools here
 export const availableTools: Anthropic.Tool[] = [
   notesCreateNoteTool,
@@ -39,7 +43,7 @@ export const availableTools: Anthropic.Tool[] = [
 ]
 
 // Export all execution functions - map tool name to executor
-export const toolExecutors: Record<string, (parameters: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>> = {
+export const toolExecutors: Record<string, (parameters: Record<string, unknown>, context?: ToolExecutionContext) => Promise<{ success: boolean; data?: unknown; error?: string }>> = {
   notes_create_note: executeNotesCreateNote,
   notes_list_notes: executeNotesListNotes,
   notes_get_note: executeNotesGetNote,

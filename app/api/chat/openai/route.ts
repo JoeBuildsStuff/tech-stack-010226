@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import type { Response, ResponseFunctionToolCall, ResponseInputItem, Tool } from 'openai/resources/responses/responses'
+import type { Response as OpenAIResponse, ResponseFunctionToolCall, ResponseInputItem, Tool } from 'openai/resources/responses/responses'
 import type { ChatMessage, PageContext } from '@/types/chat'
-import { availableTools, toolExecutors } from '../tools'
+import { availableTools, toolExecutors, type ToolExecutionContext } from '../tools'
 import { createClient as supabaseClient } from '@/lib/supabase/server';
 
 // Initialize OpenAI client
@@ -27,6 +27,7 @@ interface OpenAIAPIRequest {
   clientNowIso?: string
   clientPath?: string
   webSearchEnabled?: boolean
+  stream?: boolean
 }
 
 interface OpenAIAPIResponse {
@@ -68,7 +69,49 @@ type ResponsesInputMessage = {
   content: string | ResponsesInputContent[]
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPIResponse>> {
+type ToolCallSummary = {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  result?: {
+    success: boolean
+    data?: unknown
+    error?: string
+  }
+}
+
+type OpenAIRequestConfig = {
+  systemPrompt: string
+  initialInput: ResponseInputItem[]
+  tools: Tool[]
+}
+
+type StreamEvent =
+  | { type: 'response.output_text.delta'; delta?: string }
+  | { type: 'response.output_item.done'; item?: unknown }
+  | { type: 'response.completed'; response?: OpenAIResponse }
+  | { type: 'error'; error?: unknown }
+  | { type: string; [key: string]: unknown }
+
+const encoder = new TextEncoder()
+
+function encodeSSE(event: string, data: unknown): Uint8Array {
+  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isResponseFunctionToolCall(value: unknown): value is ResponseFunctionToolCall {
+  return isObject(value) &&
+    value.type === 'function_call' &&
+    typeof value.call_id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.arguments === 'string'
+}
+
+export async function POST(request: NextRequest): Promise<Response> {
   try {
 
     // Check authentication
@@ -99,6 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       const clientNowIso = (formData.get('client_now_iso') as string) || ''
       const clientPath = (formData.get('client_path') as string) || ''
       const webSearchEnabled = formData.get('web_search_enabled') !== 'false'
+      const stream = formData.get('stream') === 'true'
       const attachmentCount = parseInt(formData.get('attachmentCount') as string || '0')
       
       const context = contextStr && contextStr !== 'null' ? JSON.parse(contextStr) : null
@@ -118,7 +162,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
         }
       }
       
-      body = { message, context, messages, model, reasoningEffort, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled } as unknown as OpenAIAPIRequest
+      body = { message, context, messages, model, reasoningEffort, attachments, clientTz, clientOffset, clientNowIso, clientPath, webSearchEnabled, stream } as unknown as OpenAIAPIRequest
     } else {
       // Handle JSON request (backward compatibility)
       body = await request.json()
@@ -136,6 +180,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       clientNowIso = '',
       clientPath = '',
       webSearchEnabled = true,
+      stream = false,
     } = body
 
     // Validate input
@@ -153,10 +198,32 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       )
     }
 
-    const response = await getOpenAIResponse(
-      messages,
-      message,
-      context || null,
+    const toolContext: ToolExecutionContext = {
+      appBaseUrl: request.nextUrl.origin,
+    }
+
+    if (stream) {
+      return streamOpenAIResponse({
+        history: messages,
+        newUserMessage: message,
+        context: context || null,
+        attachments,
+        model,
+        reasoningEffort,
+        clientTz,
+        clientOffset,
+        clientNowIso,
+        clientPath,
+        webSearchEnabled,
+        toolContext,
+        signal: request.signal,
+      })
+    }
+
+    const response = await getOpenAIResponse({
+      history: messages,
+      newUserMessage: message,
+      context: context || null,
       attachments,
       model,
       reasoningEffort,
@@ -165,8 +232,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<OpenAIAPI
       clientNowIso,
       clientPath,
       webSearchEnabled,
-      request.signal
-    )
+      toolContext,
+      signal: request.signal,
+    })
 
     return NextResponse.json(response)
   } catch (error) {
@@ -217,37 +285,46 @@ function convertToolsToOpenAI(webSearchEnabled: boolean): Tool[] {
   }))
 }
 
-async function executeFunctionCall(functionName: string, parameters: Record<string, unknown>): Promise<{ success: boolean; data?: unknown; error?: string }> {
+async function executeFunctionCall(
+  functionName: string,
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
     const executor = toolExecutors[functionName]
     if (!executor) {
       return { success: false, error: `Unknown function: ${functionName}` }
     }
     
-    return await executor(parameters)
+    return await executor(parameters, context)
   } catch (error) {
     console.error('Function execution error:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' }
   }
 }
 
-async function getOpenAIResponse(
-  history: ChatMessage[],
-  newUserMessage: string,
-  context: PageContext | null,
-  attachments: Array<{ file: File; name: string; type: string; size: number }> = [],
-  model?: string,
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh',
-  clientTz: string = '',
-  clientOffset: string = '',
-  clientNowIso: string = '',
-  clientPath: string = '',
-  webSearchEnabled: boolean = true,
-  signal?: AbortSignal
-): Promise<OpenAIAPIResponse> {
-  try {
-    // 1. System Prompt
-    let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
+async function buildOpenAIRequestConfig({
+  history,
+  newUserMessage,
+  context,
+  attachments = [],
+  clientTz = '',
+  clientOffset = '',
+  clientNowIso = '',
+  clientPath = '',
+  webSearchEnabled = true,
+}: {
+  history: ChatMessage[]
+  newUserMessage: string
+  context: PageContext | null
+  attachments?: Array<{ file: File; name: string; type: string; size: number }>
+  clientTz?: string
+  clientOffset?: string
+  clientNowIso?: string
+  clientPath?: string
+  webSearchEnabled?: boolean
+}): Promise<OpenAIRequestConfig> {
+  let systemPrompt = `You are a helpful assistant. Use the available tools when appropriate to help users with their requests.
 
 Image Processing Capabilities:
 - You can analyze and understand images that users upload
@@ -261,78 +338,180 @@ Web Search Capabilities:
 If a tool responds with a url to a record, include it in your response using markdown.
 When linking to app records in markdown, use the exact absolute URL returned by the tool. Do not rewrite it as a relative path.`
 
-    if (!webSearchEnabled) {
-      systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
-    }
-    
-    // Provide user locale/timezone context to the model
-    if (clientTz || clientOffset || clientNowIso) {
-      systemPrompt += `\n\nUser Locale Context:\n- Timezone: ${clientTz || 'unknown'}\n- UTC offset (at request): ${clientOffset || 'unknown'}\n- Local time at request: ${clientNowIso || 'unknown'}`
-    }
+  if (!webSearchEnabled) {
+    systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`
+  }
+  
+  if (clientTz || clientOffset || clientNowIso) {
+    systemPrompt += `\n\nUser Locale Context:\n- Timezone: ${clientTz || 'unknown'}\n- UTC offset (at request): ${clientOffset || 'unknown'}\n- Local time at request: ${clientNowIso || 'unknown'}`
+  }
 
-    if (clientPath) {
-      systemPrompt += `\n\nUser Navigation Context:\n- Current path: ${clientPath}\n- If the path is /dashboard/notes/{id}, use that {id} as noteId for note tools.`
-    }
-    
-    if (context) {
-      systemPrompt += `\n\n## Current Page Context:\n- Total items: ${context.totalCount}\n- Current filters: ${JSON.stringify(context.currentFilters, null, 2)}\n- Current sorting: ${JSON.stringify(context.currentSort, null, 2)}\n- Visible data sample: ${JSON.stringify(context.visibleData.slice(0, 3), null, 2)}`
-    }
+  if (clientPath) {
+    systemPrompt += `\n\nUser Navigation Context:\n- Current path: ${clientPath}\n- If the path is /dashboard/notes/{id}, use that {id} as noteId for note tools.`
+  }
+  
+  if (context) {
+    systemPrompt += `\n\n## Current Page Context:\n- Total items: ${context.totalCount}\n- Current filters: ${JSON.stringify(context.currentFilters, null, 2)}\n- Current sorting: ${JSON.stringify(context.currentSort, null, 2)}\n- Visible data sample: ${JSON.stringify(context.visibleData.slice(0, 3), null, 2)}`
+  }
 
-    // 2. Map history to Responses API input messages (filter out system messages)
-    const openaiHistory: ResponsesInputMessage[] = history
-      .filter(msg => msg.role !== 'system')
-      .map(msg => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      }))
+  const openaiHistory: ResponsesInputMessage[] = history
+    .filter(msg => msg.role !== 'system')
+    .map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }))
 
-    // 3. Construct the new user message with attachments
-    const newUserContent: ResponsesInputMessage = {
-      role: 'user',
-      content: newUserMessage
-    }
+  const newUserContent: ResponsesInputMessage = {
+    role: 'user',
+    content: newUserMessage
+  }
 
-    // Process attachments for Responses API.
-    if (attachments.length > 0) {
-      const contentBlocks: ResponsesInputContent[] = [
-        { type: 'input_text', text: newUserMessage }
-      ]
-
-      for (const attachment of attachments) {
-        if (attachment.type.startsWith('image/')) {
-          const arrayBuffer = await attachment.file.arrayBuffer()
-          const base64 = Buffer.from(arrayBuffer).toString('base64')
-          const dataUrl = `data:${attachment.type};base64,${base64}`
-
-          contentBlocks.push({
-            type: 'input_image',
-            image_url: dataUrl,
-            detail: 'auto',
-          })
-        } else {
-          contentBlocks.push({
-            type: 'input_text',
-            text: `\n\nFile attachment: ${attachment.name} (${attachment.type}, ${formatFileSize(attachment.size)})`
-          })
-        }
-      }
-
-      newUserContent.content = contentBlocks
-    }
-
-    const initialInput: ResponseInputItem[] = [
-      ...openaiHistory,
-      newUserContent,
+  if (attachments.length > 0) {
+    const contentBlocks: ResponsesInputContent[] = [
+      { type: 'input_text', text: newUserMessage }
     ]
 
-    // 4. Prepare tools
-    const tools = convertToolsToOpenAI(webSearchEnabled)
+    for (const attachment of attachments) {
+      if (attachment.type.startsWith('image/')) {
+        const arrayBuffer = await attachment.file.arrayBuffer()
+        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        const dataUrl = `data:${attachment.type};base64,${base64}`
 
-    // 5. Iterative tool calling with maximum of 5 iterations.
+        contentBlocks.push({
+          type: 'input_image',
+          image_url: dataUrl,
+          detail: 'auto',
+        })
+      } else {
+        contentBlocks.push({
+          type: 'input_text',
+          text: `\n\nFile attachment: ${attachment.name} (${attachment.type}, ${formatFileSize(attachment.size)})`
+        })
+      }
+    }
+
+    newUserContent.content = contentBlocks
+  }
+
+  const initialInput: ResponseInputItem[] = [
+    ...openaiHistory,
+    newUserContent,
+  ]
+
+  return {
+    systemPrompt,
+    initialInput,
+    tools: convertToolsToOpenAI(webSearchEnabled),
+  }
+}
+
+async function runToolCalls({
+  toolCalls,
+  clientTz,
+  clientOffset,
+  clientNowIso,
+  toolContext,
+  signal,
+}: {
+  toolCalls: ResponseFunctionToolCall[]
+  clientTz: string
+  clientOffset: string
+  clientNowIso: string
+  toolContext?: ToolExecutionContext
+  signal?: AbortSignal
+}): Promise<{
+  nextInput: ResponseInputItem[]
+  toolResults: Array<{ success: boolean; data?: unknown; error?: string }>
+  toolSummaries: ToolCallSummary[]
+}> {
+  const toolResults: Array<{ success: boolean; data?: unknown; error?: string }> = []
+  const toolSummaries: ToolCallSummary[] = []
+
+  const nextInput = await Promise.all(
+    toolCalls.map(async (toolCall) => {
+      signal?.throwIfAborted()
+      let parsedArgs: Record<string, unknown>
+      try {
+        parsedArgs = JSON.parse(toolCall.arguments)
+      } catch (error) {
+        console.error('Failed to parse tool arguments:', error)
+        parsedArgs = {}
+      }
+
+      const augmentedArgs = {
+        ...parsedArgs,
+        client_tz: clientTz,
+        client_utc_offset: clientOffset,
+        client_now_iso: clientNowIso,
+      }
+      const functionResult = await executeFunctionCall(toolCall.name, augmentedArgs, toolContext)
+      signal?.throwIfAborted()
+      toolResults.push(functionResult)
+
+      toolSummaries.push({
+        id: toolCall.id || toolCall.call_id,
+        name: toolCall.name,
+        arguments: augmentedArgs,
+        result: functionResult
+      })
+
+      return {
+        type: 'function_call_output' as const,
+        call_id: toolCall.call_id,
+        output: JSON.stringify(functionResult),
+      }
+    })
+  )
+
+  return { nextInput, toolResults, toolSummaries }
+}
+
+async function getOpenAIResponse({
+  history,
+  newUserMessage,
+  context,
+  attachments = [],
+  model,
+  reasoningEffort,
+  clientTz = '',
+  clientOffset = '',
+  clientNowIso = '',
+  clientPath = '',
+  webSearchEnabled = true,
+  toolContext,
+  signal,
+}: {
+  history: ChatMessage[]
+  newUserMessage: string
+  context: PageContext | null
+  attachments?: Array<{ file: File; name: string; type: string; size: number }>
+  model?: string
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh'
+  clientTz?: string
+  clientOffset?: string
+  clientNowIso?: string
+  clientPath?: string
+  webSearchEnabled?: boolean
+  toolContext?: ToolExecutionContext
+  signal?: AbortSignal
+}): Promise<OpenAIAPIResponse> {
+  try {
+    const { systemPrompt, initialInput, tools } = await buildOpenAIRequestConfig({
+      history,
+      newUserMessage,
+      context,
+      attachments,
+      clientTz,
+      clientOffset,
+      clientNowIso,
+      clientPath,
+      webSearchEnabled,
+    })
+
     let maxIterations = 5
     let previousResponseId: string | undefined
     let nextInput: ResponseInputItem[] = initialInput
-    let finalResponse: Response | null = null
+    let finalResponse: OpenAIResponse | null = null
     const allToolResults: Array<{ success: boolean; data?: unknown; error?: string }> = []
     const allToolCalls: Array<{
       id: string
@@ -372,41 +551,17 @@ When linking to app records in markdown, use the exact absolute URL returned by 
         break
       }
 
-      nextInput = await Promise.all(
-        toolCalls.map(async (toolCall) => {
-          signal?.throwIfAborted()
-          let parsedArgs: Record<string, unknown>
-          try {
-            parsedArgs = JSON.parse(toolCall.arguments)
-          } catch (error) {
-            console.error('Failed to parse tool arguments:', error)
-            parsedArgs = {}
-          }
-
-          const augmentedArgs = {
-            ...parsedArgs,
-            client_tz: clientTz,
-            client_utc_offset: clientOffset,
-            client_now_iso: clientNowIso,
-          }
-          const functionResult = await executeFunctionCall(toolCall.name, augmentedArgs)
-          signal?.throwIfAborted()
-          allToolResults.push(functionResult)
-
-          allToolCalls.push({
-            id: toolCall.id || toolCall.call_id,
-            name: toolCall.name,
-            arguments: augmentedArgs,
-            result: functionResult
-          })
-
-          return {
-            type: 'function_call_output' as const,
-            call_id: toolCall.call_id,
-            output: JSON.stringify(functionResult),
-          }
-        })
-      )
+      const toolRun = await runToolCalls({
+        toolCalls,
+        clientTz,
+        clientOffset,
+        clientNowIso,
+        toolContext,
+        signal,
+      })
+      nextInput = toolRun.nextInput
+      allToolResults.push(...toolRun.toolResults)
+      allToolCalls.push(...toolRun.toolSummaries)
 
       maxIterations--
     }
@@ -437,4 +592,144 @@ When linking to app records in markdown, use the exact absolute URL returned by 
     console.error('OpenAI API error:', error)
     throw new Error('Failed to get response from OpenAI API')
   }
+}
+
+function streamOpenAIResponse({
+  history,
+  newUserMessage,
+  context,
+  attachments = [],
+  model,
+  reasoningEffort,
+  clientTz = '',
+  clientOffset = '',
+  clientNowIso = '',
+  clientPath = '',
+  webSearchEnabled = true,
+  toolContext,
+  signal,
+}: {
+  history: ChatMessage[]
+  newUserMessage: string
+  context: PageContext | null
+  attachments?: Array<{ file: File; name: string; type: string; size: number }>
+  model?: string
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh'
+  clientTz?: string
+  clientOffset?: string
+  clientNowIso?: string
+  clientPath?: string
+  webSearchEnabled?: boolean
+  toolContext?: ToolExecutionContext
+  signal?: AbortSignal
+}): Response {
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false
+      const send = (event: string, data: unknown) => {
+        if (!closed) controller.enqueue(encodeSSE(event, data))
+      }
+
+      try {
+        const { systemPrompt, initialInput, tools } = await buildOpenAIRequestConfig({
+          history,
+          newUserMessage,
+          context,
+          attachments,
+          clientTz,
+          clientOffset,
+          clientNowIso,
+          clientPath,
+          webSearchEnabled,
+        })
+
+        let maxIterations = 5
+        let previousResponseId: string | undefined
+        let nextInput: ResponseInputItem[] = initialInput
+        let finalMessage = ''
+        let finalResponse: OpenAIResponse | null = null
+        const allToolResults: Array<{ success: boolean; data?: unknown; error?: string }> = []
+        const allToolCalls: ToolCallSummary[] = []
+
+        while (maxIterations > 0) {
+          signal?.throwIfAborted()
+          const stream = await openai.responses.create({
+            model: model || 'gpt-5',
+            instructions: systemPrompt,
+            input: nextInput,
+            previous_response_id: previousResponseId,
+            tools: tools.length > 0 ? tools : undefined,
+            tool_choice: tools.length > 0 ? 'auto' : undefined,
+            reasoning: reasoningEffort ? { effort: reasoningEffort } : undefined,
+            stream: true,
+          }, { signal })
+
+          const streamedToolCalls: ResponseFunctionToolCall[] = []
+
+          for await (const event of stream as AsyncIterable<StreamEvent>) {
+            signal?.throwIfAborted()
+            if (event.type === 'response.output_text.delta' && event.delta) {
+              finalMessage += event.delta
+              send('delta', { delta: event.delta })
+            } else if (event.type === 'response.output_item.done' && isResponseFunctionToolCall(event.item)) {
+              streamedToolCalls.push(event.item)
+            } else if (event.type === 'response.completed') {
+              const completedResponse = event.response as OpenAIResponse | undefined
+              finalResponse = completedResponse || null
+              previousResponseId = completedResponse?.id || previousResponseId
+            } else if (event.type === 'error') {
+              throw new Error(isObject(event.error) && typeof event.error.message === 'string' ? event.error.message : 'OpenAI stream error')
+            }
+          }
+
+          if (streamedToolCalls.length === 0) {
+            break
+          }
+
+          const toolRun = await runToolCalls({
+            toolCalls: streamedToolCalls,
+            clientTz,
+            clientOffset,
+            clientNowIso,
+            toolContext,
+            signal,
+          })
+          nextInput = toolRun.nextInput
+          allToolResults.push(...toolRun.toolResults)
+          allToolCalls.push(...toolRun.toolSummaries)
+          maxIterations--
+        }
+
+        const firstSuccessfulResult = allToolResults.find(result => result.success)
+        const message = (finalMessage || finalResponse?.output_text || '').trim() || 'No response generated'
+
+        send('done', {
+          message,
+          functionResult: firstSuccessfulResult ? { success: true, data: firstSuccessfulResult.data } : undefined,
+          toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
+          citations: [],
+          actions: [],
+        } satisfies OpenAIAPIResponse)
+      } catch (error) {
+        if (!signal?.aborted) {
+          console.error('OpenAI API streaming error:', error)
+          send('error', {
+            message: error instanceof Error ? error.message : 'Failed to get response from OpenAI API',
+          })
+        }
+      } finally {
+        closed = true
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

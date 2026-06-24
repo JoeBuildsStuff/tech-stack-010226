@@ -53,6 +53,7 @@ interface ChatMessageRow {
 }
 
 interface ToolCallResponse {
+  id: string;
   name: string;
   arguments: Record<string, unknown>;
   result?: {
@@ -67,6 +68,18 @@ interface ActionResponse {
   type: "filter" | "sort" | "navigate" | "create" | "function_call";
   label: string;
   payload: Record<string, unknown>;
+}
+
+interface ChatStreamResult {
+  message?: string;
+  reasoning?: string;
+  actions?: ActionResponse[];
+  toolCalls?: ToolCallResponse[];
+  citations?: Array<{
+    url: string;
+    title: string;
+    cited_text: string;
+  }>;
 }
 
 interface UseChatProps {
@@ -84,6 +97,68 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === "AbortError"
     : error instanceof Error && error.name === "AbortError";
+}
+
+async function readChatStream(
+  response: Response,
+  onDelta: (delta: string) => void,
+  signal: AbortSignal
+): Promise<ChatStreamResult> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream") || !response.body) {
+    return (await response.json()) as ChatStreamResult;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: ChatStreamResult | null = null;
+
+  const handleFrame = (frame: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith("event:")) {
+        event = line.slice("event:".length).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice("data:".length).trimStart());
+      }
+    }
+
+    if (dataLines.length === 0) return;
+    const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+
+    if (event === "delta" && typeof payload.delta === "string") {
+      onDelta(payload.delta);
+    } else if (event === "done") {
+      finalResult = payload as ChatStreamResult;
+    } else if (event === "error") {
+      throw new Error(
+        typeof payload.message === "string"
+          ? payload.message
+          : "Chat stream failed"
+      );
+    }
+  };
+
+  while (true) {
+    signal.throwIfAborted();
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() || "";
+    for (const frame of frames) {
+      if (frame.trim()) handleFrame(frame);
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) handleFrame(buffer);
+
+  return finalResult || {};
 }
 
 export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
@@ -256,6 +331,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
         formData.append("reasoning_effort", reasoningEffort);
       }
       formData.append("web_search_enabled", String(webSearchEnabled));
+      formData.append("stream", "true");
 
       // Attach client timezone context
       try {
@@ -289,6 +365,20 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
         formData.append("attachmentCount", attachments.length.toString());
       }
 
+      let assistantMessageId: string | null = null;
+      let streamedContent = "";
+      const prevLen = useChatStore.getState().messages.length;
+      addMessage({
+        role: "assistant",
+        content: "",
+      });
+      const messagesAfterAssistantAdd = useChatStore.getState().messages;
+      if (messagesAfterAssistantAdd.length > prevLen) {
+        assistantMessageId =
+          messagesAfterAssistantAdd[messagesAfterAssistantAdd.length - 1]?.id ||
+          null;
+      }
+
       const response = await fetch("/api/chat/anthropic", {
         method: "POST",
         body: formData,
@@ -299,19 +389,36 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const result = await response.json();
+      const result = await readChatStream(
+        response,
+        (delta) => {
+          streamedContent += delta;
+          if (assistantMessageId) {
+            updateMessage(assistantMessageId, {
+              content: streamedContent,
+            });
+          }
+        },
+        signal ?? new AbortController().signal
+      );
       signal?.throwIfAborted();
 
       // Add the assistant message with tool calls, citations, and reasoning if available
       const assistantMessage: Omit<ChatMessage, "id" | "timestamp"> = {
         role: "assistant",
         content:
-          result.message || "I apologize, but I couldn't generate a response.",
+          result.message ||
+          streamedContent ||
+          "I apologize, but I couldn't generate a response.",
         reasoning: result.reasoning || undefined,
         suggestedActions: result.actions || [],
         toolCalls: result.toolCalls || undefined,
         citations: result.citations || undefined,
       };
+
+      if (assistantMessageId) {
+        updateMessage(assistantMessageId, assistantMessage);
+      }
 
       // Persist assistant message to DB and refresh
       const sid = await ensureSession();
@@ -330,8 +437,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             addRes.data.id,
             result.toolCalls.map((t: ToolCallResponse) => ({
               name: t.name,
-              arguments: t.arguments,
-              result: t.result,
+              arguments: t.arguments as Json,
+              result: (t.result as Json) || null,
               reasoning: t.reasoning,
             }))
           );
@@ -342,14 +449,14 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             result.actions.map((a: ActionResponse) => ({
               type: a.type,
               label: a.label,
-              payload: a.payload,
+              payload: a.payload as Json,
             }))
           );
         }
       }
       await refreshMessages(sid);
     },
-    [ensureSession, refreshMessages]
+    [addMessage, ensureSession, refreshMessages, updateMessage]
   );
 
   // Handle sending a new message
@@ -546,6 +653,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               "web_search_enabled",
               String(options?.webSearchEnabled ?? true)
             );
+            cerebrasFormData.append("stream", "true");
 
             // Attach client timezone context
             try {
@@ -591,6 +699,20 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               );
             }
 
+            let assistantMessageId: string | null = null;
+            let streamedContent = "";
+            const prevLen = useChatStore.getState().messages.length;
+            addMessage({
+              role: "assistant",
+              content: "",
+            });
+            const messagesAfterAssistantAdd = useChatStore.getState().messages;
+            if (messagesAfterAssistantAdd.length > prevLen) {
+              assistantMessageId =
+                messagesAfterAssistantAdd[messagesAfterAssistantAdd.length - 1]
+                  ?.id || null;
+            }
+
             const response = await fetch("/api/chat/cerebras", {
               method: "POST",
               body: cerebrasFormData,
@@ -601,7 +723,18 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               throw new Error(`Cerebras API error: ${response.status}`);
             }
 
-            const result = await response.json();
+            const result = await readChatStream(
+              response,
+              (delta) => {
+                streamedContent += delta;
+                if (assistantMessageId) {
+                  updateMessage(assistantMessageId, {
+                    content: streamedContent,
+                  });
+                }
+              },
+              signal
+            );
             signal.throwIfAborted();
 
             // Add the assistant message with tool calls, citations, and reasoning if available
@@ -609,12 +742,17 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               role: "assistant",
               content:
                 result.message ||
+                streamedContent ||
                 "I apologize, but I couldn't generate a response.",
               reasoning: result.reasoning || undefined,
               suggestedActions: result.actions || [],
               toolCalls: result.toolCalls || undefined,
               citations: result.citations || undefined,
             };
+
+            if (assistantMessageId) {
+              updateMessage(assistantMessageId, assistantMessage);
+            }
 
             const res2 = await addChatMessage({
               sessionId: sid,
@@ -629,8 +767,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   res2.data.id,
                   result.toolCalls.map((t: ToolCallResponse) => ({
                     name: t.name,
-                    arguments: t.arguments,
-                    result: t.result,
+                    arguments: t.arguments as Json,
+                    result: (t.result as Json) || null,
                     reasoning: t.reasoning,
                   }))
                 );
@@ -641,7 +779,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   result.actions.map((a: ActionResponse) => ({
                     type: a.type,
                     label: a.label,
-                    payload: a.payload,
+                    payload: a.payload as Json,
                   }))
                 );
               }
@@ -667,6 +805,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               "web_search_enabled",
               String(options?.webSearchEnabled ?? true)
             );
+            openaiFormData.append("stream", "true");
 
             // Attach client timezone context
             try {
@@ -712,6 +851,20 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               );
             }
 
+            let assistantMessageId: string | null = null;
+            let streamedContent = "";
+            const prevLen = useChatStore.getState().messages.length;
+            addMessage({
+              role: "assistant",
+              content: "",
+            });
+            const messagesAfterAssistantAdd = useChatStore.getState().messages;
+            if (messagesAfterAssistantAdd.length > prevLen) {
+              assistantMessageId =
+                messagesAfterAssistantAdd[messagesAfterAssistantAdd.length - 1]
+                  ?.id || null;
+            }
+
             const response = await fetch("/api/chat/openai", {
               method: "POST",
               body: openaiFormData,
@@ -722,7 +875,18 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               throw new Error(`OpenAI API error: ${response.status}`);
             }
 
-            const result = await response.json();
+            const result = await readChatStream(
+              response,
+              (delta) => {
+                streamedContent += delta;
+                if (assistantMessageId) {
+                  updateMessage(assistantMessageId, {
+                    content: streamedContent,
+                  });
+                }
+              },
+              signal
+            );
             signal.throwIfAborted();
 
             // Add the assistant message with tool calls, citations, and reasoning if available
@@ -730,12 +894,17 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               role: "assistant",
               content:
                 result.message ||
+                streamedContent ||
                 "I apologize, but I couldn't generate a response.",
               reasoning: result.reasoning || undefined,
               suggestedActions: result.actions || [],
               toolCalls: result.toolCalls || undefined,
               citations: result.citations || undefined,
             };
+
+            if (assistantMessageId) {
+              updateMessage(assistantMessageId, assistantMessage);
+            }
 
             const res3 = await addChatMessage({
               sessionId: sid,
@@ -750,8 +919,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   res3.data.id,
                   result.toolCalls.map((t: ToolCallResponse) => ({
                     name: t.name,
-                    arguments: t.arguments,
-                    result: t.result,
+                    arguments: t.arguments as Json,
+                    result: (t.result as Json) || null,
                     reasoning: t.reasoning,
                   }))
                 );
@@ -762,7 +931,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   result.actions.map((a: ActionResponse) => ({
                     type: a.type,
                     label: a.label,
-                    payload: a.payload,
+                    payload: a.payload as Json,
                   }))
                 );
               }
@@ -811,6 +980,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       sendToAPI,
       refreshMessages,
       addMessage,
+      updateMessage,
       deleteMessage,
       updateSessionTitle,
     ]

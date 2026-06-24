@@ -6,6 +6,7 @@ import { APP_SCHEMA } from '@/lib/supabase/app-schema'
 import { createClient } from '@/lib/supabase/server'
 import { createComment, createThread, listThreads } from '@/components/tiptap/lib/comments'
 import { createUniqueSlug, slugToDocumentPath } from '@/app/dashboard/notes/note-path'
+import type { ToolExecutionContext } from './index'
 const MAX_NOTE_CHARS = 20000
 const MAX_COMMENT_CHARS = 4000
 const MAX_THREADS = 200
@@ -222,8 +223,8 @@ async function getOwnedNote(
   return (data as OwnedNote | null) ?? null
 }
 
-function getAppBaseUrl(): string | null {
-  const rawUrl = process.env.NEXT_PUBLIC_URL?.trim()
+function getAppBaseUrl(context?: ToolExecutionContext): string | null {
+  const rawUrl = context?.appBaseUrl?.trim() || process.env.NEXT_PUBLIC_URL?.trim()
   if (!rawUrl) {
     return null
   }
@@ -238,9 +239,9 @@ function getAppBaseUrl(): string | null {
   }
 }
 
-function noteUrl(noteId: string): string {
+function noteUrl(noteId: string, context?: ToolExecutionContext): string {
   const path = `/dashboard/notes/${encodeURIComponent(noteId)}`
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(context)
   return baseUrl ? `${baseUrl}${path}` : path
 }
 
@@ -315,7 +316,10 @@ export const notesListNotesTool: Anthropic.Tool = {
   },
 }
 
-export async function executeNotesListNotes(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesListNotes(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const limit = clamp(asPositiveInteger(parameters.limit) ?? 20, 1, MAX_LIST_NOTES)
     const includeNotes =
@@ -351,7 +355,7 @@ export async function executeNotesListNotes(parameters: Record<string, unknown>)
           title: note.title ?? 'Untitled',
           createdAt: note.created_at,
           updatedAt: note.updated_at,
-          url: noteUrl(note.id),
+          url: noteUrl(note.id, context),
         }))
       : []
 
@@ -372,7 +376,10 @@ export async function executeNotesListNotes(parameters: Record<string, unknown>)
   }
 }
 
-export async function executeNotesCreateNote(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesCreateNote(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const auth = await getAuthenticatedContext()
     if ('error' in auth) {
@@ -429,7 +436,7 @@ export async function executeNotesCreateNote(parameters: Record<string, unknown>
           content: created.content ?? '',
           createdAt: created.created_at,
           updatedAt: created.updated_at,
-          url: noteUrl(created.id),
+          url: noteUrl(created.id, context),
         },
       },
     }
@@ -442,7 +449,10 @@ export async function executeNotesCreateNote(parameters: Record<string, unknown>
   }
 }
 
-export async function executeNotesGetNote(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesGetNote(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
@@ -475,7 +485,7 @@ export async function executeNotesGetNote(parameters: Record<string, unknown>): 
           originalContentLength: content.length,
           createdAt: note.created_at,
           updatedAt: note.updated_at,
-          url: noteUrl(note.id),
+          url: noteUrl(note.id, context),
         },
       },
     }
@@ -516,7 +526,10 @@ export const notesGetCommentsTool: Anthropic.Tool = {
   },
 }
 
-export async function executeNotesGetComments(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesGetComments(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
@@ -579,7 +592,7 @@ export async function executeNotesGetComments(parameters: Record<string, unknown
         totalComments,
         returnedThreads: threads.length,
         threads,
-        url: noteUrl(noteId),
+        url: noteUrl(noteId, context),
       },
     }
   } catch (error) {
@@ -616,7 +629,10 @@ export const notesUpdateNoteTool: Anthropic.Tool = {
   },
 }
 
-export async function executeNotesUpdateNote(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesUpdateNote(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
@@ -679,7 +695,7 @@ export async function executeNotesUpdateNote(parameters: Record<string, unknown>
           content: updated.content ?? '',
           createdAt: updated.created_at,
           updatedAt: updated.updated_at,
-          url: noteUrl(updated.id),
+          url: noteUrl(updated.id, context),
         },
       },
     }
@@ -716,7 +732,10 @@ export const notesAddCommentTool: Anthropic.Tool = {
   },
 }
 
-export async function executeNotesAddComment(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesAddComment(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const noteId = asString(parameters.noteId)
     const content = asString(parameters.content)
@@ -767,7 +786,7 @@ export async function executeNotesAddComment(parameters: Record<string, unknown>
         rootCommentId: rootComment?.id ?? null,
         threadStatus: thread.status,
         createdAt: thread.createdAt,
-        url: noteUrl(noteId),
+        url: noteUrl(noteId, context),
       },
     }
   } catch (error) {
@@ -803,7 +822,10 @@ export const notesReplyToCommentTool: Anthropic.Tool = {
   },
 }
 
-export async function executeNotesReplyToComment(parameters: Record<string, unknown>): ToolResult {
+export async function executeNotesReplyToComment(
+  parameters: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): ToolResult {
   try {
     const noteId = asString(parameters.noteId)
     const threadId = asString(parameters.threadId)
@@ -844,7 +866,7 @@ export async function executeNotesReplyToComment(parameters: Record<string, unkn
         commentId: comment.id,
         createdAt: comment.createdAt,
         updatedAt: comment.updatedAt,
-        url: noteUrl(noteId),
+        url: noteUrl(noteId, context),
       },
     }
   } catch (error) {
