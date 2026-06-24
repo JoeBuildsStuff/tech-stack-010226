@@ -1,8 +1,8 @@
-// app/api/chat/route.ts (or wherever your route lives)
+// app/api/chat/anthropic/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import type { ChatMessage, PageContext } from '@/types/chat'
 import Anthropic from '@anthropic-ai/sdk'
-import { availableTools, toolExecutors } from './tools'
+import { availableTools, toolExecutors } from '../tools'
 import { createClient as supabaseClient } from '@/lib/supabase/server';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,7 +283,8 @@ Web Search Capabilities:
 - Use web_scrape when search result descriptions do not contain enough evidence
 - Cite web sources as descriptive Markdown links in your response
 
-If a tool responds with a url to a record, include it in your response using markdown.`
+If a tool responds with a url to a record, include it in your response using markdown.
+When linking to app records in markdown, use the exact absolute URL returned by the tool. Do not rewrite it as a relative path.`
 
   if (!webSearchEnabled) {
     systemPrompt += `\n\nWeb access is disabled for this request. Do not claim to have searched or accessed the web.`

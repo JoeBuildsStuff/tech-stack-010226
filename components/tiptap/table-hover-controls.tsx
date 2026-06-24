@@ -336,7 +336,7 @@ export function TableHoverControls({
     };
   }, [position, updatePosition]);
 
-  const selectTablePart = useCallback(
+  const getTablePartContext = useCallback(
     (axis: TableAxis) => {
       if (!position) {
         return null;
@@ -358,8 +358,41 @@ export function TableHoverControls({
         return null;
       }
 
-      const anchorCell = targetCells[0].position;
-      const headCell = targetCells[targetCells.length - 1].position;
+      return { info, targetCells };
+    },
+    [editor, position]
+  );
+
+  const focusTablePart = useCallback(
+    (axis: TableAxis) => {
+      const context = getTablePartContext(axis);
+
+      if (!context) {
+        return null;
+      }
+
+      editor
+        .chain()
+        .focus()
+        .setTextSelection(context.targetCells[0].position + 1)
+        .run();
+
+      return context;
+    },
+    [editor, getTablePartContext]
+  );
+
+  const selectTablePart = useCallback(
+    (axis: TableAxis) => {
+      const context = getTablePartContext(axis);
+
+      if (!context) {
+        return null;
+      }
+
+      const anchorCell = context.targetCells[0].position;
+      const headCell =
+        context.targetCells[context.targetCells.length - 1].position;
 
       editor
         .chain()
@@ -370,9 +403,9 @@ export function TableHoverControls({
         })
         .run();
 
-      return { info, targetCells };
+      return context;
     },
-    [editor, position]
+    [editor, getTablePartContext]
   );
 
   const refreshPosition = useCallback(() => {
@@ -389,13 +422,13 @@ export function TableHoverControls({
         return;
       }
 
-      const selection = selectTablePart(axis);
+      const context = focusTablePart(axis);
 
-      if (!selection) {
+      if (!context) {
         return;
       }
 
-      const { info, targetCells } = selection;
+      const { info, targetCells } = context;
       const columnCount = info.rows[0]?.length ?? 0;
       const rowCount = info.rows.length;
 
@@ -518,7 +551,7 @@ export function TableHoverControls({
 
       refreshPosition();
     },
-    [editor, position, refreshPosition, selectTablePart]
+    [editor, position, refreshPosition, focusTablePart]
   );
 
   const setAlignment = useCallback(
@@ -550,9 +583,7 @@ export function TableHoverControls({
         return;
       }
 
-      const selection = selectTablePart(axis);
-
-      if (!selection) {
+      if (!focusTablePart(axis)) {
         return;
       }
 
@@ -564,7 +595,7 @@ export function TableHoverControls({
 
       refreshPosition();
     },
-    [editor, position, refreshPosition, selectTablePart]
+    [editor, position, refreshPosition, focusTablePart]
   );
 
   if (!position) {

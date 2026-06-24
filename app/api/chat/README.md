@@ -4,11 +4,11 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 
 ## Available Endpoints
 
-### 1. Main Chat API (`/api/chat`)
+### 1. Anthropic Chat API (`/api/chat/anthropic`)
 - **Provider**: Anthropic (Claude models)
 - **Models**: Haiku 4.5, Sonnet 4.6, Opus 4.6
 - **Features**: Function calling, web search, file attachments, context awareness
-- **File**: `route.ts`
+- **File**: `anthropic/route.ts`
 
 ### 2. OpenAI Chat API (`/api/chat/openai`)
 - **Provider**: OpenAI

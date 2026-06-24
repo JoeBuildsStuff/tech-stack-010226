@@ -9,6 +9,7 @@ import { createUniqueSlug, slugToDocumentPath } from '@/app/dashboard/notes/note
 const MAX_NOTE_CHARS = 20000
 const MAX_COMMENT_CHARS = 4000
 const MAX_THREADS = 200
+const MAX_LIST_NOTES = 100
 const MARKDOWN_HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const ALLOWED_TEXT_ALIGN = [/^left$/, /^right$/, /^center$/, /^justify$/]
 const NOTE_ALLOWED_TAGS = [
@@ -50,6 +51,13 @@ type OwnedNote = {
   id: string
   title: string | null
   content: string | null
+  created_at: string
+  updated_at: string
+}
+
+type ListedNote = {
+  id: string
+  title: string | null
   created_at: string
   updated_at: string
 }
@@ -214,8 +222,26 @@ async function getOwnedNote(
   return (data as OwnedNote | null) ?? null
 }
 
+function getAppBaseUrl(): string | null {
+  const rawUrl = process.env.NEXT_PUBLIC_URL?.trim()
+  if (!rawUrl) {
+    return null
+  }
+
+  const withProtocol = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+
+  try {
+    const url = new URL(withProtocol)
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return rawUrl.replace(/\/+$/, '')
+  }
+}
+
 function noteUrl(noteId: string): string {
-  return `/dashboard/notes/${encodeURIComponent(noteId)}`
+  const path = `/dashboard/notes/${encodeURIComponent(noteId)}`
+  const baseUrl = getAppBaseUrl()
+  return baseUrl ? `${baseUrl}${path}` : path
 }
 
 function safeCommentContent(content: string, maxChars: number) {
@@ -266,6 +292,84 @@ export const notesCreateNoteTool: Anthropic.Tool = {
     },
     required: [],
   },
+}
+
+export const notesListNotesTool: Anthropic.Tool = {
+  name: 'notes_list_notes',
+  description:
+    'List or count notes owned by the current user. Use this for questions like "how many notes do I have?" or "show my notes".',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      limit: {
+        type: 'integer',
+        description: `Maximum number of note summaries to return (1-${MAX_LIST_NOTES}). Defaults to 20.`,
+      },
+      includeNotes: {
+        type: 'boolean',
+        description:
+          'Whether to include note summaries. Defaults to true. Set false when only the total count is needed.',
+      },
+    },
+    required: [],
+  },
+}
+
+export async function executeNotesListNotes(parameters: Record<string, unknown>): ToolResult {
+  try {
+    const limit = clamp(asPositiveInteger(parameters.limit) ?? 20, 1, MAX_LIST_NOTES)
+    const includeNotes =
+      typeof parameters.includeNotes === 'boolean' ? parameters.includeNotes : true
+
+    const auth = await getAuthenticatedContext()
+    if ('error' in auth) {
+      return { success: false, error: auth.error }
+    }
+
+    let query = auth.supabase
+      .schema(APP_SCHEMA)
+      .from('notes')
+      .select('id, title, created_at, updated_at', { count: 'exact' })
+      .eq('user_id', auth.userId)
+      .order('updated_at', { ascending: false })
+
+    if (includeNotes) {
+      query = query.limit(limit)
+    } else {
+      query = query.limit(0)
+    }
+
+    const { data, error, count } = await query
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    const notes = includeNotes
+      ? ((data as ListedNote[] | null) ?? []).map((note) => ({
+          id: note.id,
+          title: note.title ?? 'Untitled',
+          createdAt: note.created_at,
+          updatedAt: note.updated_at,
+          url: noteUrl(note.id),
+        }))
+      : []
+
+    return {
+      success: true,
+      data: {
+        totalNotes: count ?? notes.length,
+        returnedNotes: notes.length,
+        notes,
+      },
+    }
+  } catch (error) {
+    console.error('notes_list_notes execution error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    }
+  }
 }
 
 export async function executeNotesCreateNote(parameters: Record<string, unknown>): ToolResult {

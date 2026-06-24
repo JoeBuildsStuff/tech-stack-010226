@@ -289,7 +289,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
         formData.append("attachmentCount", attachments.length.toString());
       }
 
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/chat/anthropic", {
         method: "POST",
         body: formData,
         signal,

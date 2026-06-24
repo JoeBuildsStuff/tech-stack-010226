@@ -218,7 +218,7 @@ Main hook for chat functionality with API integration.
 - `updatePageContext(context)`: Update current page context
 
 **API Integration:**
-- Sends messages to `/api/chat`
+- Sends messages to provider-specific chat routes, including `/api/chat/anthropic`
 - Includes conversation history and page context
 - Handles loading states and errors
 
@@ -245,7 +245,7 @@ function DataTable() {
 
 ## API Integration
 
-### Chat API Route (`app/api/chat/route.ts`)
+### Chat API Route (`app/api/chat/anthropic/route.ts`)
 Handles chat requests with Anthropic Claude integration.
 
 **Request Format:**
@@ -507,7 +507,7 @@ The hook centralizes chat behavior and integrates UI, storage, and APIs.
   - Uploads attachments to storage via `/api/images/upload` or `/api/files/upload`.
   - Persists the user message with `addChatMessage`; associates uploaded attachments with `addChatAttachments`.
   - Chooses provider based on `model`:
-    - Default Anthropic: `POST /api/chat`
+    - Anthropic: `POST /api/chat/anthropic`
     - Cerebras: `POST /api/chat/cerebras` (e.g., models like `gpt-oss-120b-*`)
     - OpenAI: `POST /api/chat/openai` (e.g., models like `gpt-5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`)
   - Sends last 10 messages for context, plus optional `reasoning_effort` and client timezone metadata.
@@ -564,7 +564,7 @@ These wrap Supabase access and enforce RLS-safe operations.
 
 ### API Routes: src/app/api/chat/*
 
-- `POST /api/chat` Anthropic backend with support for returning:
+- `POST /api/chat/anthropic` Anthropic backend with support for returning:
   - `message`, optional `actions`, optional `toolCalls`, optional `citations`, optional `reasoning`.
 - `POST /api/chat/cerebras` Cerebras backend with optional `reasoning` in both message and tool calls.
 - `POST /api/chat/openai` OpenAI backend supporting `reasoning_effort` and structured results similar to above.
