@@ -154,6 +154,25 @@ export async function listChatSessions() {
   return { data: mapped };
 }
 
+export async function getChatSessionSummariesByIds(sessionIds: string[]) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { error: "Not authenticated" };
+
+  const ids = Array.from(new Set(sessionIds.filter(Boolean))).slice(0, 20);
+  if (ids.length === 0) return { data: [] };
+
+  const { data, error } = await supabase
+    .schema(APP_SCHEMA)
+    .from("chat_sessions")
+    .select("id, title, created_at, updated_at")
+    .eq("user_id", userData.user.id)
+    .in("id", ids);
+
+  if (error) return { error: error.message };
+  return { data: data || [] };
+}
+
 export interface AddMessageParams {
   sessionId: string;
   role: ChatRole;

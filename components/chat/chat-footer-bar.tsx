@@ -6,6 +6,7 @@ import { useState } from "react";
 import { MessagesSquare, GalleryVerticalEnd, X } from "lucide-react";
 import { createChatSession } from "@/actions/chat";
 import { Button } from "@/components/ui/button";
+import { useHydrateOpenChatTabs } from "@/components/chat/use-hydrate-open-chat-tabs";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ export function ChatFooterBar() {
   } = useChatStore();
   // Tracks whether a chat session is being created
   const [isCreating, setIsCreating] = useState(false);
+  useHydrateOpenChatTabs();
 
   // Handler for creating a new chat session ("Ask Chat" button)
   const handleAskChat = async () => {
