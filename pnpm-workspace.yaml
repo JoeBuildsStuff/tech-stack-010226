@@ -6,6 +6,9 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - '@shadcn/react@0.1.0'
+
 overrides:
   prosemirror-model: 1.25.8
   prosemirror-view: 1.41.9
