@@ -33,6 +33,15 @@ import {
 import ChatMessageActions from "./chat-message-actions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
 import { toast } from "sonner";
 import {
   formatToolCallArguments,
@@ -358,21 +367,24 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
 
         {/* Attachments - shown for user messages */}
         {isUser && message.attachments && message.attachments.length > 0 && (
-          <div
-            className={cn(
-              "flex gap-1.5 overflow-x-auto pb-1",
-              "scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent",
-              "max-w-72"
-            )}
-          >
+          <AttachmentGroup className="max-w-72 gap-1.5 pb-1">
             {message.attachments.map((attachment) => (
-              <div
+              <Attachment
                 key={attachment.id}
-                className="bg-background relative flex flex-col rounded-md border group min-w-[60px] w-[60px] flex-shrink-0 cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => openAttachmentModal(attachment)}
+                orientation="vertical"
+                size="xs"
+                className="w-[60px] min-w-[60px] cursor-pointer rounded-md bg-background"
               >
                 {/* File Preview */}
-                <div className="bg-accent flex aspect-square items-center justify-center overflow-hidden rounded-t-[inherit]">
+                <AttachmentMedia
+                  variant={
+                    attachment.type.startsWith("image/") &&
+                    (attachment.data || attachment.url)
+                      ? "image"
+                      : "icon"
+                  }
+                  className="w-full rounded-t-[inherit] bg-accent"
+                >
                   {attachment.type.startsWith("image/") &&
                   (attachment.data || attachment.url) ? (
                     // Use base64 data when present (fresh uploads), otherwise fallback to signed URL
@@ -383,26 +395,28 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                       className="size-full rounded-t-[inherit] object-cover"
                     />
                   ) : (
-                    <div className="flex items-center justify-center">
-                      {getFileIcon(attachment)}
-                    </div>
+                    getFileIcon(attachment)
                   )}
-                </div>
+                </AttachmentMedia>
 
                 {/* File Info */}
-                <div className="flex min-w-0 flex-col gap-0 border-t p-1">
-                  <p className="truncate text-[9px] font-medium leading-tight">
+                <AttachmentContent className="flex flex-col gap-0 border-t p-1">
+                  <AttachmentTitle className="text-[9px] font-medium leading-tight">
                     {attachment.name.length > 8
                       ? attachment.name.substring(0, 8) + "..."
                       : attachment.name}
-                  </p>
-                  <p className="text-muted-foreground truncate text-[8px] leading-tight">
+                  </AttachmentTitle>
+                  <AttachmentDescription className="text-[8px] leading-tight">
                     {formatFileSize(attachment.size)}
-                  </p>
-                </div>
-              </div>
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentTrigger
+                  aria-label={`Preview ${attachment.name}`}
+                  onClick={() => openAttachmentModal(attachment)}
+                />
+              </Attachment>
             ))}
-          </div>
+          </AttachmentGroup>
         )}
 
         {/* Reasoning - shown before tool calls and content for non-system messages */}

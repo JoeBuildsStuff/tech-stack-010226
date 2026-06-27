@@ -23,6 +23,17 @@ import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
 import {
+  Attachment as AttachmentRoot,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -288,12 +299,15 @@ export function ChatInput() {
     return <File className="size-5 opacity-60" />;
   };
 
-  const getFilePreview = (attachment: Attachment) => {
-    const fileType = attachment.type;
+  const renderAttachmentMedia = (attachment: Attachment) => {
+    const isImage = attachment.type.startsWith("image/");
 
     return (
-      <div className="bg-accent flex aspect-square items-center justify-center overflow-hidden rounded-t-[inherit]">
-        {fileType.startsWith("image/") ? (
+      <AttachmentMedia
+        variant={isImage ? "image" : "icon"}
+        className="w-full rounded-t-[inherit] bg-accent"
+      >
+        {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={URL.createObjectURL(attachment.file)}
@@ -303,7 +317,7 @@ export function ChatInput() {
         ) : (
           getFileIcon(attachment)
         )}
-      </div>
+      </AttachmentMedia>
     );
   };
 
@@ -494,38 +508,44 @@ export function ChatInput() {
         {attachments.length > 0 && (
           <div className="w-full p-2">
             <div className="flex w-full flex-col">
-              <div className="flex gap-4 overflow-x-auto pt-2 pb-1">
+              <AttachmentGroup className="gap-4 pt-2 pb-1">
                 {attachments.map((attachment) => (
-                  <div
+                  <AttachmentRoot
                     key={attachment.id}
-                    className="bg-background relative flex flex-col rounded-md border group min-w-[120px] max-w-[120px] flex-shrink-0 cursor-pointer"
-                    onClick={() => openAttachmentModal(attachment)}
+                    orientation="vertical"
+                    className="w-[120px] max-w-[120px] cursor-pointer rounded-md bg-background"
                   >
-                    {getFilePreview(attachment)}
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeAttachment(attachment.id);
-                      }}
-                      size="icon"
-                      variant="secondary"
-                      className="absolute -top-2 -right-2 size-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                      aria-label="Remove file"
-                      disabled={isLoading}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                    <div className="flex min-w-0 flex-col gap-0.5 border-t p-2">
-                      <p className="truncate text-[11px] font-medium">
+                    {renderAttachmentMedia(attachment)}
+                    <AttachmentContent className="flex flex-col gap-0.5 border-t p-2">
+                      <AttachmentTitle className="text-[11px] font-medium">
                         {attachment.name}
-                      </p>
-                      <p className="text-muted-foreground truncate text-[10px]">
+                      </AttachmentTitle>
+                      <AttachmentDescription className="text-[10px]">
                         {formatFileSize(attachment.size)}
-                      </p>
-                    </div>
-                  </div>
+                      </AttachmentDescription>
+                    </AttachmentContent>
+                    <AttachmentActions className="absolute -top-2 -right-2 z-20 opacity-0 transition-opacity group-hover/attachment:opacity-100">
+                      <AttachmentAction
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeAttachment(attachment.id);
+                        }}
+                        size="icon"
+                        variant="secondary"
+                        className="size-6 rounded-full"
+                        aria-label="Remove file"
+                        disabled={isLoading}
+                      >
+                        <X className="size-4" />
+                      </AttachmentAction>
+                    </AttachmentActions>
+                    <AttachmentTrigger
+                      aria-label={`Preview ${attachment.name}`}
+                      onClick={() => openAttachmentModal(attachment)}
+                    />
+                  </AttachmentRoot>
                 ))}
-              </div>
+              </AttachmentGroup>
             </div>
           </div>
         )}

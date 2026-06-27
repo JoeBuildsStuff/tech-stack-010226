@@ -7,7 +7,13 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatHistory } from "@/components/chat/chat-history";
-import { ScrollFadeArea } from "@/components/scroll-fade-area";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -97,9 +103,16 @@ export function ChatPanel() {
 
           {/* Messages Area */}
           <div className="flex-1 flex flex-col min-h-0">
-            <ScrollFadeArea className="flex-1" contentClassName="p-3">
-              <ChatMessagesList onActionClick={handleActionClick} />
-            </ScrollFadeArea>
+            <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+              <MessageScroller>
+                <MessageScrollerViewport>
+                  <MessageScrollerContent className="p-3">
+                    <ChatMessagesList onActionClick={handleActionClick} />
+                  </MessageScrollerContent>
+                </MessageScrollerViewport>
+                <MessageScrollerButton />
+              </MessageScroller>
+            </MessageScrollerProvider>
           </div>
 
           {/* Input Area */}

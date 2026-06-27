@@ -4,7 +4,13 @@ import { useChatStore } from "@/lib/chat/chat-store";
 import { useChat } from "@/hooks/use-chat";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
-import { ScrollFadeArea } from "@/components/scroll-fade-area";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PictureInPicture2, PanelRight, LaptopMinimal } from "lucide-react";
@@ -114,9 +120,16 @@ export function ChatFullPage() {
       <div className="flex-1 flex flex-col min-h-0 max-w-3xl mx-auto w-full">
         {/* Messages Area */}
         <div className="flex-1 flex flex-col min-h-0">
-          <ScrollFadeArea className="flex-1">
-            <ChatMessagesList onActionClick={handleActionClick} />
-          </ScrollFadeArea>
+          <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+            <MessageScroller>
+              <MessageScrollerViewport>
+                <MessageScrollerContent>
+                  <ChatMessagesList onActionClick={handleActionClick} />
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton />
+            </MessageScroller>
+          </MessageScrollerProvider>
         </div>
         {/* Input Area */}
         <div className="">
