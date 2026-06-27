@@ -445,78 +445,110 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                   )}
 
                   {/* Tool call */}
-                  <Collapsible className="rounded-lg px-3 py-2 text-sm break-words text-foreground font-light border border-border">
+                  <Collapsible className="text-sm break-words font-light">
                     <CollapsibleTrigger asChild>
-                      <button className="flex items-center justify-between w-full cursor-pointer group">
+                      <button className="flex items-center justify-between w-full cursor-pointer group text-muted-foreground hover:text-foreground transition-colors">
                         <Marker className="gap-2">
                           <MarkerIcon>
                             {toolCall.result ? (
                               <Lightbulb className="size-4 shrink-0" strokeWidth={1.5} />
                             ) : (
-                              <Spinner className="size-4 shrink-0 stroke-muted-foreground" />
+                              <Spinner className="size-4 shrink-0 stroke-current" />
                             )}
                           </MarkerIcon>
-                          <MarkerContent className="text-muted-foreground group-hover:underline text-sm">
+                          <MarkerContent className="text-sm">
                             {toolCall.result
                               ? toolCall.name
                               : `Running ${toolCall.name}…`}
                           </MarkerContent>
                         </Marker>
                         <ChevronDown
-                          className="size-4 shrink-0 text-muted-foreground group-data-[state=open]:rotate-180 transition-transform"
+                          className="size-4 shrink-0 group-data-[state=open]:rotate-180 transition-transform"
                           strokeWidth={1.5}
                         />
                       </button>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="space-y-2 mt-2">
-                        {/* Tool Arguments */}
-                        <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                          <Marker variant="separator" className="text-xs text-muted-foreground font-medium pb-1">
-                            <MarkerContent>Request</MarkerContent>
-                          </Marker>
-                          <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
-                            {formatToolCallArguments(toolCall.arguments)}
-                          </pre>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="absolute top-1 right-1 h-6 w-6 p-0"
-                            onClick={() => {
-                              navigator.clipboard.writeText(
-                                formatToolCallArguments(toolCall.arguments)
-                              );
-                              toast.success("Arguments copied to clipboard");
-                            }}
-                          >
-                            <CopyIcon className="size-3" strokeWidth={1.5} />
-                          </Button>
-                        </div>
-                        {/* Tool Result */}
+                        {/* Tool Arguments - independently collapsible */}
+                        <Collapsible
+                          defaultOpen
+                          className="bg-background/30 rounded-md border border-border"
+                        >
+                          <CollapsibleTrigger asChild>
+                            <button className="flex items-center justify-between w-full cursor-pointer group p-2 text-muted-foreground hover:text-foreground transition-colors">
+                              <Marker className="gap-2">
+                                <MarkerContent className="text-xs font-medium">
+                                  Request
+                                </MarkerContent>
+                              </Marker>
+                              <ChevronDown
+                                className="size-3.5 shrink-0 group-data-[state=open]:rotate-180 transition-transform"
+                                strokeWidth={1.5}
+                              />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="relative px-2 pb-2">
+                              <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+                                {formatToolCallArguments(toolCall.arguments)}
+                              </pre>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="absolute top-1 right-1 h-6 w-6 p-0"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    formatToolCallArguments(toolCall.arguments)
+                                  );
+                                  toast.success("Arguments copied to clipboard");
+                                }}
+                              >
+                                <CopyIcon className="size-3" strokeWidth={1.5} />
+                              </Button>
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                        {/* Tool Result - independently collapsible */}
                         {toolCall.result && (
-                          <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                            <Marker variant="separator" className="text-xs text-muted-foreground font-medium pb-1">
-                              <MarkerContent>
-                                Result: {toolCall.result.success ? "Success" : "Error"}
-                              </MarkerContent>
-                            </Marker>
-                            <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
-                              {formatToolCallResult(toolCall.result)}
-                            </pre>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute top-1 right-1 h-6 w-6 p-0"
-                              onClick={() => {
-                                navigator.clipboard.writeText(
-                                  formatToolCallResult(toolCall.result)
-                                );
-                                toast.success("Result copied to clipboard");
-                              }}
-                            >
-                              <CopyIcon className="size-3" strokeWidth={1.5} />
-                            </Button>
-                          </div>
+                          <Collapsible
+                            defaultOpen
+                            className="bg-background/30 rounded-md border border-border"
+                          >
+                            <CollapsibleTrigger asChild>
+                              <button className="flex items-center justify-between w-full cursor-pointer group p-2 text-muted-foreground hover:text-foreground transition-colors">
+                                <Marker className="gap-2">
+                                  <MarkerContent className="text-xs font-medium">
+                                    Result: {toolCall.result.success ? "Success" : "Error"}
+                                  </MarkerContent>
+                                </Marker>
+                                <ChevronDown
+                                  className="size-3.5 shrink-0 group-data-[state=open]:rotate-180 transition-transform"
+                                  strokeWidth={1.5}
+                                />
+                              </button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="relative px-2 pb-2">
+                                <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+                                  {formatToolCallResult(toolCall.result)}
+                                </pre>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="absolute top-1 right-1 h-6 w-6 p-0"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(
+                                      formatToolCallResult(toolCall.result!)
+                                    );
+                                    toast.success("Result copied to clipboard");
+                                  }}
+                                >
+                                  <CopyIcon className="size-3" strokeWidth={1.5} />
+                                </Button>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
                         )}
                       </div>
                     </CollapsibleContent>
