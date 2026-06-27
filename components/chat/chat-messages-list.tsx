@@ -4,7 +4,8 @@ import { useChatStore } from "@/lib/chat/chat-store";
 import { ChatMessage, ChatMessageLoading } from "./chat-message";
 import { MessagesSquare } from "lucide-react";
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
-import type { ChatAction } from "@/types/chat";
+import { MessageGroup } from "@/components/ui/message";
+import type { ChatAction, ChatMessage as ChatMessageType } from "@/types/chat";
 
 interface ChatMessagesListProps {
   onActionClick?: (action: ChatAction) => void;
@@ -35,15 +36,28 @@ export function ChatMessagesList({
     );
   }
 
+  // Collapse runs of consecutive same-role messages into a single MessageGroup
+  // so same-sender bubbles read as one visual unit.
+  const messageGroups = messages.reduce<ChatMessageType[][]>((groups, message) => {
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup[0].role === message.role) {
+      lastGroup.push(message);
+    } else {
+      groups.push([message]);
+    }
+    return groups;
+  }, []);
+
   return (
     <>
-      {messages.map((message) => (
-        <MessageScrollerItem key={message.id} messageId={message.id}>
-          <ChatMessage
-            message={message}
-            onActionClick={onActionClick}
-          />
-        </MessageScrollerItem>
+      {messageGroups.map((group) => (
+        <MessageGroup key={group[0].id}>
+          {group.map((message) => (
+            <MessageScrollerItem key={message.id} messageId={message.id}>
+              <ChatMessage message={message} onActionClick={onActionClick} />
+            </MessageScrollerItem>
+          ))}
+        </MessageGroup>
       ))}
 
       {/* Show loading placeholder while waiting for API response */}
