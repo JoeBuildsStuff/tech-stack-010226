@@ -42,6 +42,13 @@ import {
   AttachmentTitle,
   AttachmentTrigger,
 } from "@/components/ui/attachment";
+import {
+  Message,
+  MessageContent,
+  MessageHeader,
+  MessageFooter,
+} from "@/components/ui/message";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { toast } from "sonner";
 import {
   formatToolCallArguments,
@@ -262,22 +269,22 @@ const renderTextWithCitations = (
 // Loading placeholder component
 export function ChatMessageLoading() {
   return (
-    <div className="flex gap-1 px-0 py-2">
-      <div className="flex flex-col gap-1 max-w-[85%]">
+    <Message align="start" className="px-0 py-2">
+      <MessageContent>
         {/* Loading message bubble */}
-        <div
-          className={cn(
-            "rounded-lg px-3 py-2 text-sm",
-            "bg-muted text-foreground",
-            // "rounded-bl-sm",
-            "flex items-center gap-2"
-          )}
-        >
-          <Spinner className="stroke-5 size-4 stroke-muted-foreground" />
-          {/* <span className="text-muted-foreground">Thinking...</span> */}
-        </div>
-      </div>
-    </div>
+        <Bubble variant="muted">
+          <BubbleContent
+            className={cn(
+              "rounded-lg px-3 py-2 text-sm bg-muted flex items-center gap-2"
+              // "rounded-bl-sm",
+            )}
+          >
+            <Spinner className="stroke-5 size-4 stroke-muted-foreground" />
+            {/* <span className="text-muted-foreground">Thinking...</span> */}
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   );
 }
 
@@ -338,350 +345,334 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
     setSelectedAttachment(null);
   };
 
+  // System messages get a centered pill treatment outside the Message layout
+  if (isSystem) {
+    return (
+      <div className="flex justify-center py-2">
+        <span className="bg-muted/50 text-muted-foreground text-xs italic px-4 py-1 rounded-full">
+          {message.content}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={cn(
-        "flex gap-1 px-0 py-2",
-        isUser && "flex-row-reverse",
-        isSystem && "justify-center"
-      )}
-    >
-      <div
-        className={cn(
-          "flex flex-col gap-1 max-w-[85%]",
-          isUser && "items-end",
-          isSystem && "items-center max-w-full"
-        )}
-      >
-        {/* Timestamp */}
-        {!isSystem && (
-          <div
-            className={cn(
-              "text-xs text-muted-foreground px-1",
-              isUser && "text-right"
-            )}
-          >
-            {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-          </div>
-        )}
+    <>
+      <Message align={isUser ? "end" : "start"} className="px-0 py-2">
+        <MessageContent className={cn("gap-1", isUser && "items-end")}>
+          {/* Timestamp */}
+          <MessageHeader className={cn("px-1", isUser && "justify-end")}>
+            <span className="text-xs text-muted-foreground">
+              {formatDistanceToNow(message.timestamp, { addSuffix: true })}
+            </span>
+          </MessageHeader>
 
-        {/* Attachments - shown for user messages */}
-        {isUser && message.attachments && message.attachments.length > 0 && (
-          <AttachmentGroup className="max-w-72 gap-1.5 pb-1">
-            {message.attachments.map((attachment) => (
-              <Attachment
-                key={attachment.id}
-                orientation="vertical"
-                size="xs"
-                className="w-[60px] min-w-[60px] cursor-pointer rounded-md bg-background"
-              >
-                {/* File Preview */}
-                <AttachmentMedia
-                  variant={
-                    attachment.type.startsWith("image/") &&
-                    (attachment.data || attachment.url)
-                      ? "image"
-                      : "icon"
-                  }
-                  className="w-full rounded-t-[inherit] bg-accent"
+          {/* Attachments - shown for user messages */}
+          {isUser && message.attachments && message.attachments.length > 0 && (
+            <AttachmentGroup className="max-w-72 gap-1.5 pb-1">
+              {message.attachments.map((attachment) => (
+                <Attachment
+                  key={attachment.id}
+                  orientation="vertical"
+                  size="xs"
+                  className="w-[60px] min-w-[60px] cursor-pointer rounded-md bg-background"
                 >
-                  {attachment.type.startsWith("image/") &&
-                  (attachment.data || attachment.url) ? (
-                    // Use base64 data when present (fresh uploads), otherwise fallback to signed URL
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={attachment.data || attachment.url!}
-                      alt={attachment.name}
-                      className="size-full rounded-t-[inherit] object-cover"
-                    />
-                  ) : (
-                    getFileIcon(attachment)
+                  {/* File Preview */}
+                  <AttachmentMedia
+                    variant={
+                      attachment.type.startsWith("image/") &&
+                      (attachment.data || attachment.url)
+                        ? "image"
+                        : "icon"
+                    }
+                    className="w-full rounded-t-[inherit] bg-accent"
+                  >
+                    {attachment.type.startsWith("image/") &&
+                    (attachment.data || attachment.url) ? (
+                      // Use base64 data when present (fresh uploads), otherwise fallback to signed URL
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachment.data || attachment.url!}
+                        alt={attachment.name}
+                        className="size-full rounded-t-[inherit] object-cover"
+                      />
+                    ) : (
+                      getFileIcon(attachment)
+                    )}
+                  </AttachmentMedia>
+
+                  {/* File Info */}
+                  <AttachmentContent className="flex flex-col gap-0 border-t p-1">
+                    <AttachmentTitle className="text-[9px] font-medium leading-tight">
+                      {attachment.name.length > 8
+                        ? attachment.name.substring(0, 8) + "..."
+                        : attachment.name}
+                    </AttachmentTitle>
+                    <AttachmentDescription className="text-[8px] leading-tight">
+                      {formatFileSize(attachment.size)}
+                    </AttachmentDescription>
+                  </AttachmentContent>
+                  <AttachmentTrigger
+                    aria-label={`Preview ${attachment.name}`}
+                    onClick={() => openAttachmentModal(attachment)}
+                  />
+                </Attachment>
+              ))}
+            </AttachmentGroup>
+          )}
+
+          {/* Reasoning - shown before tool calls and content for non-system messages */}
+          {message.reasoning && (
+            <ReasoningDisplay reasoning={message.reasoning} />
+          )}
+
+          {/* Tool calls with individual reasoning - shown before the response for non-system messages */}
+          {message.toolCalls && message.toolCalls.length > 0 && (
+            <div className="space-y-2 mb-2 w-72">
+              {message.toolCalls.map((toolCall) => (
+                <div key={toolCall.id} className="space-y-2">
+                  {/* Reasoning for this specific tool call */}
+                  {toolCall.reasoning && (
+                    <ReasoningDisplay reasoning={toolCall.reasoning} />
                   )}
-                </AttachmentMedia>
 
-                {/* File Info */}
-                <AttachmentContent className="flex flex-col gap-0 border-t p-1">
-                  <AttachmentTitle className="text-[9px] font-medium leading-tight">
-                    {attachment.name.length > 8
-                      ? attachment.name.substring(0, 8) + "..."
-                      : attachment.name}
-                  </AttachmentTitle>
-                  <AttachmentDescription className="text-[8px] leading-tight">
-                    {formatFileSize(attachment.size)}
-                  </AttachmentDescription>
-                </AttachmentContent>
-                <AttachmentTrigger
-                  aria-label={`Preview ${attachment.name}`}
-                  onClick={() => openAttachmentModal(attachment)}
-                />
-              </Attachment>
-            ))}
-          </AttachmentGroup>
-        )}
-
-        {/* Reasoning - shown before tool calls and content for non-system messages */}
-        {!isSystem && message.reasoning && (
-          <ReasoningDisplay reasoning={message.reasoning} />
-        )}
-
-        {/* Tool calls with individual reasoning - shown before the response for non-system messages */}
-        {!isSystem && message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="space-y-2 mb-2 w-72">
-            {message.toolCalls.map((toolCall) => (
-              <div key={toolCall.id} className="space-y-2">
-                {/* Reasoning for this specific tool call */}
-                {toolCall.reasoning && (
-                  <ReasoningDisplay reasoning={toolCall.reasoning} />
-                )}
-
-                {/* Tool call */}
-                <Collapsible className="rounded-lg px-3 py-2 text-sm break-words text-foreground font-light border border-border">
-                  <CollapsibleTrigger asChild>
-                    <button className="flex items-center justify-between w-full cursor-pointer group">
-                      <div className="flex items-center gap-2">
-                        <Lightbulb
-                          className="size-4 shrink-0"
+                  {/* Tool call */}
+                  <Collapsible className="rounded-lg px-3 py-2 text-sm break-words text-foreground font-light border border-border">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center justify-between w-full cursor-pointer group">
+                        <div className="flex items-center gap-2">
+                          <Lightbulb
+                            className="size-4 shrink-0"
+                            strokeWidth={1.5}
+                          />
+                          <span className="text-muted-foreground group-hover:underline text-sm">
+                            {toolCall.name}
+                          </span>
+                        </div>
+                        <ChevronDown
+                          className="size-4 shrink-0 text-muted-foreground group-data-[state=open]:rotate-180 transition-transform"
                           strokeWidth={1.5}
                         />
-                        <span className="text-muted-foreground group-hover:underline text-sm">
-                          {toolCall.name}
-                        </span>
-                      </div>
-                      <ChevronDown
-                        className="size-4 shrink-0 text-muted-foreground group-data-[state=open]:rotate-180 transition-transform"
-                        strokeWidth={1.5}
-                      />
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="space-y-2 mt-2">
-                      {/* Tool Arguments */}
-                      <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                        <div className="flex items-center gap-2">
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-2 mt-2">
+                        {/* Tool Arguments */}
+                        <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
                           <span className="text-muted-foreground text-xs font-medium">
                             Request:
                           </span>
-                        </div>
-                        <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
-                          {formatToolCallArguments(toolCall.arguments)}
-                        </pre>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="absolute top-1 right-1 h-6 w-6 p-0"
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              formatToolCallArguments(toolCall.arguments)
-                            );
-                            toast.success("Arguments copied to clipboard");
-                          }}
-                        >
-                          <CopyIcon className="size-3" strokeWidth={1.5} />
-                        </Button>
-                      </div>
-
-                      {/* Tool Result */}
-                      {toolCall.result && (
-                        <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground text-xs font-medium">
-                              Result:{" "}
-                              {toolCall.result.success ? "Success" : "Error"}
-                            </span>
-                          </div>
                           <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
-                            {formatToolCallResult(toolCall.result)}
+                            {formatToolCallArguments(toolCall.arguments)}
                           </pre>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="absolute top-1 right-1 h-6 w-6 p-0"
                             onClick={() => {
-                              const content = formatToolCallResult(
-                                toolCall.result
+                              navigator.clipboard.writeText(
+                                formatToolCallArguments(toolCall.arguments)
                               );
-                              navigator.clipboard.writeText(content);
-                              toast.success("Result copied to clipboard");
+                              toast.success("Arguments copied to clipboard");
                             }}
                           >
                             <CopyIcon className="size-3" strokeWidth={1.5} />
                           </Button>
                         </div>
-                      )}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Message bubble or editing textarea */}
-        {isEditing && isUser ? (
-          <div
-            className={cn(
-              "rounded-lg px-3 py-2 text-sm",
-              "bg-muted text-foreground"
-            )}
-          >
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="bg-transparent dark:bg-transparent shadow-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-none p-0 resize-none"
-              placeholder="Edit your message..."
-              autoFocus
-            />
-            <div className="flex gap-2 items-center justify-end">
-              <Button size="sm" onClick={handleEditCancel} variant="outline">
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleEditSave} variant="outline">
-                Send
-              </Button>
+                        {/* Tool Result */}
+                        {toolCall.result && (
+                          <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
+                            <span className="text-muted-foreground text-xs font-medium">
+                              Result:{" "}
+                              {toolCall.result.success ? "Success" : "Error"}
+                            </span>
+                            <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+                              {formatToolCallResult(toolCall.result)}
+                            </pre>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-1 right-1 h-6 w-6 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  formatToolCallResult(toolCall.result)
+                                );
+                                toast.success("Result copied to clipboard");
+                              }}
+                            >
+                              <CopyIcon className="size-3" strokeWidth={1.5} />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              ))}
             </div>
-          </div>
-        ) : // Only render message bubble if there's content or it's a system message
-        message.content.trim() || isSystem ? (
-          <div
-            className={cn(
-              "rounded-lg px-3 py-2 text-sm",
-              "break-words",
-              isUser && ["bg-muted text-foreground"],
-              !isUser &&
-                !isSystem && [
-                  "text-foreground",
-                  // "rounded-bl-sm"
-                ],
-              isSystem && [
-                "bg-muted/50 text-muted-foreground text-xs",
-                "italic px-4 py-1 rounded-full",
-              ]
-            )}
-          >
-            {isSystem ? (
-              message.content
-            ) : (
-              <div
-                className={cn("prose prose-sm max-w-none", "dark:prose-invert")}
+          )}
+
+          {/* Message bubble or editing textarea */}
+          {isEditing && isUser ? (
+            <Bubble variant="muted" align="end">
+              <BubbleContent className="rounded-lg px-3 py-2 text-sm bg-muted">
+                <Textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="bg-transparent dark:bg-transparent shadow-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-none p-0 resize-none"
+                  placeholder="Edit your message..."
+                  autoFocus
+                />
+                <div className="flex gap-2 items-center justify-end">
+                  <Button size="sm" onClick={handleEditCancel} variant="outline">
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleEditSave} variant="outline">
+                    Send
+                  </Button>
+                </div>
+              </BubbleContent>
+            </Bubble>
+          ) : // Only render message bubble if there's content
+          message.content.trim() ? (
+            <Bubble
+              variant={isUser ? "muted" : "ghost"}
+              align={isUser ? "end" : "start"}
+            >
+              <BubbleContent
+                className={cn(
+                  "rounded-lg px-3 py-2 text-sm break-words",
+                  isUser && "bg-muted",
+                  !isUser && [
+                    "text-foreground",
+                    // "rounded-bl-sm"
+                  ]
+                )}
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeHighlight]}
-                  components={{
-                    // Only override what's absolutely necessary
-                    code: ({ children, ...props }) => {
-                      const isInline = !props.className?.includes("language-");
-                      return isInline ? (
-                        <code
+                <div
+                  className={cn("prose prose-sm max-w-none", "dark:prose-invert")}
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={{
+                      // Only override what's absolutely necessary
+                      code: ({ children, ...props }) => {
+                        const isInline = !props.className?.includes("language-");
+                        return isInline ? (
+                          <code
+                            className={cn(
+                              "px-1.5 py-0.5 rounded text-xs font-mono border",
+                              "bg-muted/60 border-muted-foreground/20"
+                            )}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        ) : (
+                          <code className="text-xs font-mono" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre: ({ children }) => (
+                        <pre
                           className={cn(
-                            "px-1.5 py-0.5 rounded text-xs font-mono border",
+                            "p-3 rounded-md overflow-x-auto my-2 border text-xs",
                             "bg-muted/60 border-muted-foreground/20"
                           )}
-                          {...props}
                         >
                           {children}
-                        </code>
-                      ) : (
-                        <code className="text-xs font-mono" {...props}>
-                          {children}
-                        </code>
-                      );
-                    },
-                    pre: ({ children }) => (
-                      <pre
-                        className={cn(
-                          "p-3 rounded-md overflow-x-auto my-2 border text-xs",
-                          "bg-muted/60 border-muted-foreground/20"
-                        )}
-                      >
-                        {children}
-                      </pre>
-                    ),
-                    // Custom text renderer to handle inline citations
-                    p: ({ children }) => {
-                      if (typeof children === "string") {
-                        return (
-                          <p>
-                            {renderTextWithCitations(
-                              children,
-                              message.citations || []
-                            )}
-                          </p>
-                        );
-                      }
-                      return <p>{children}</p>;
-                    },
-                    // Handle list items to process citations within them
-                    li: ({ children }) => {
-                      if (typeof children === "string") {
-                        return (
-                          <li>
-                            {renderTextWithCitations(
-                              children,
-                              message.citations || []
-                            )}
-                          </li>
-                        );
-                      }
-                      return <li>{children}</li>;
-                    },
-                    // Also handle text nodes that aren't in paragraphs
-                    text: ({ children }) => {
-                      if (typeof children === "string") {
-                        return renderTextWithCitations(
-                          children,
-                          message.citations || []
-                        );
-                      }
-                      return children;
-                    },
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
-              </div>
+                        </pre>
+                      ),
+                      // Custom text renderer to handle inline citations
+                      p: ({ children }) => {
+                        if (typeof children === "string") {
+                          return (
+                            <p>
+                              {renderTextWithCitations(
+                                children,
+                                message.citations || []
+                              )}
+                            </p>
+                          );
+                        }
+                        return <p>{children}</p>;
+                      },
+                      // Handle list items to process citations within them
+                      li: ({ children }) => {
+                        if (typeof children === "string") {
+                          return (
+                            <li>
+                              {renderTextWithCitations(
+                                children,
+                                message.citations || []
+                              )}
+                            </li>
+                          );
+                        }
+                        return <li>{children}</li>;
+                      },
+                      // Also handle text nodes that aren't in paragraphs
+                      text: ({ children }) => {
+                        if (typeof children === "string") {
+                          return renderTextWithCitations(
+                            children,
+                            message.citations || []
+                          );
+                        }
+                        return children;
+                      },
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+              </BubbleContent>
+            </Bubble>
+          ) : null}
+
+          {/* Only show actions when not editing */}
+          <MessageFooter className={cn(isUser && "justify-end")}>
+            {!isEditing && (
+              <ChatMessageActions message={message} onEdit={handleEdit} />
             )}
-          </div>
-        ) : null}
 
-        {/* Only show actions when not editing */}
-        {!isEditing && (
-          <ChatMessageActions message={message} onEdit={handleEdit} />
-        )}
-
-        {/* Function result indicator */}
-        {message.functionResult && (
-          <Badge
-            variant={message.functionResult.success ? "green" : "red"}
-            className="mt-1"
-          >
-            {message.functionResult.success
-              ? "✓ Action completed"
-              : "✗ Action failed"}
-          </Badge>
-        )}
-
-        {/* Suggested actions */}
-        {message.suggestedActions && message.suggestedActions.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {message.suggestedActions.map((action, index) => (
-              <button
-                key={index}
-                className={cn(
-                  "text-xs px-2 py-1 rounded-md",
-                  "bg-secondary text-secondary-foreground",
-                  "hover:bg-secondary/80 transition-colors",
-                  "border border-border"
-                )}
-                onClick={() => onActionClick?.(action)}
+            {/* Function result indicator */}
+            {message.functionResult && (
+              <Badge
+                variant={message.functionResult.success ? "green" : "red"}
+                className="mt-1"
               >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+                {message.functionResult.success
+                  ? "✓ Action completed"
+                  : "✗ Action failed"}
+              </Badge>
+            )}
+          </MessageFooter>
+
+          {/* Suggested actions */}
+          {message.suggestedActions && message.suggestedActions.length > 0 && (
+            <div className={cn("flex flex-wrap gap-2 mt-2", isUser && "justify-end")}>
+              {message.suggestedActions.map((action, index) => (
+                <button
+                  key={index}
+                  className={cn(
+                    "text-xs px-2 py-1 rounded-md",
+                    "bg-secondary text-secondary-foreground",
+                    "hover:bg-secondary/80 transition-colors",
+                    "border border-border"
+                  )}
+                  onClick={() => onActionClick?.(action)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </MessageContent>
+      </Message>
 
       {/* Attachment Preview Modal */}
       <Dialog open={!!selectedAttachment} onOpenChange={closeAttachmentModal}>
@@ -737,6 +728,6 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
