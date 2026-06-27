@@ -356,7 +356,8 @@ Web Search Capabilities:
 - Use web_scrape when search result descriptions do not contain enough evidence
 - Cite web sources as descriptive Markdown links in your response
 
-If a tool responds with a url to a record, include it in your response using markdown.
+If a tool responds with a url to a record, link to that record using a markdown link whose visible text is the record's own title or name, e.g. [George Washington: Leadership and Legacy](https://app.example.com/dashboard/notes/123). Do not print the raw URL as visible text, and do not append the URL after the title with a dash or other separator (never write "Title — https://...").
+When listing multiple records, render each one as its own such markdown link.
 When linking to app records in markdown, use the exact absolute URL returned by the tool. Do not rewrite it as a relative path.`
 
   if (!webSearchEnabled) {
@@ -734,6 +735,15 @@ function streamCerebrasResponse({
           const turnReasoning = reasoningBuf || undefined
 
           if (toolCallsAcc.length > 0) {
+            // Announce each tool call to the client immediately (running state)
+            for (const tc of toolCallsAcc) {
+              let parsedArgs: Record<string, unknown> = {}
+              try {
+                parsedArgs = JSON.parse(tc.arguments)
+              } catch {}
+              send('tool_call', { id: tc.id, name: tc.name, arguments: parsedArgs })
+            }
+            const resultsBefore = allToolCalls.length
             await runCerebrasToolCalls({
               toolCalls: toolCallsAcc.map(tc => ({
                 id: tc.id,
@@ -749,6 +759,10 @@ function streamCerebrasResponse({
               toolContext,
               signal,
             })
+            // Announce each tool result as it completes
+            for (const summary of allToolCalls.slice(resultsBefore)) {
+              send('tool_result', { id: summary.id, result: summary.result })
+            }
             maxIterations--
           } else {
             // No tool calls: this turn is the final response.

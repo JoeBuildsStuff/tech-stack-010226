@@ -99,10 +99,26 @@ function isAbortError(error: unknown): boolean {
     : error instanceof Error && error.name === "AbortError";
 }
 
+interface StreamToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: { success: boolean; data?: unknown; error?: string };
+}
+
+interface ChatStreamHandlers {
+  onToolCall?: (toolCall: StreamToolCall) => void;
+  onToolResult?: (toolResult: {
+    id: string;
+    result: { success: boolean; data?: unknown; error?: string };
+  }) => void;
+}
+
 async function readChatStream(
   response: Response,
   onDelta: (delta: string) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  handlers?: ChatStreamHandlers
 ): Promise<ChatStreamResult> {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/event-stream") || !response.body) {
@@ -131,6 +147,15 @@ async function readChatStream(
 
     if (event === "delta" && typeof payload.delta === "string") {
       onDelta(payload.delta);
+    } else if (event === "tool_call" && handlers?.onToolCall) {
+      handlers.onToolCall(payload as unknown as StreamToolCall);
+    } else if (event === "tool_result" && handlers?.onToolResult) {
+      handlers.onToolResult(
+        payload as unknown as {
+          id: string;
+          result: { success: boolean; data?: unknown; error?: string };
+        }
+      );
     } else if (event === "done") {
       finalResult = payload as ChatStreamResult;
     } else if (event === "error") {
@@ -159,6 +184,32 @@ async function readChatStream(
   if (buffer.trim()) handleFrame(buffer);
 
   return finalResult || {};
+}
+
+// Builds stream handlers that surface tool calls on the in-progress assistant
+// message as they happen: each `tool_call` event appends a running tool call,
+// and each `tool_result` event fills in its result. This lets the UI show the
+// "actioning a tool" state before the model streams its text response.
+function createToolStreamHandlers(
+  getAssistantMessageId: () => string | null,
+  updateMessage: (id: string, updates: Partial<ChatMessage>) => void
+): ChatStreamHandlers {
+  const toolCalls: StreamToolCall[] = [];
+  const flush = () => {
+    const id = getAssistantMessageId();
+    if (id) updateMessage(id, { toolCalls: toolCalls.map((t) => ({ ...t })) });
+  };
+  return {
+    onToolCall: (toolCall) => {
+      toolCalls.push({ ...toolCall });
+      flush();
+    },
+    onToolResult: ({ id, result }) => {
+      const existing = toolCalls.find((t) => t.id === id);
+      if (existing) existing.result = result;
+      flush();
+    },
+  };
 }
 
 export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
@@ -399,7 +450,8 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             });
           }
         },
-        signal ?? new AbortController().signal
+        signal ?? new AbortController().signal,
+        createToolStreamHandlers(() => assistantMessageId, updateMessage)
       );
       signal?.throwIfAborted();
 
@@ -733,7 +785,11 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   });
                 }
               },
-              signal
+              signal,
+              createToolStreamHandlers(
+                () => assistantMessageId,
+                updateMessage
+              )
             );
             signal.throwIfAborted();
 
@@ -885,7 +941,11 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   });
                 }
               },
-              signal
+              signal,
+              createToolStreamHandlers(
+                () => assistantMessageId,
+                updateMessage
+              )
             );
             signal.throwIfAborted();
 

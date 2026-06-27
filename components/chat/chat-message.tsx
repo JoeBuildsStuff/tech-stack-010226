@@ -49,6 +49,7 @@ import {
   MessageFooter,
 } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
 import { toast } from "sonner";
 import {
   formatToolCallArguments,
@@ -272,13 +273,8 @@ export function ChatMessageLoading() {
     <Message align="start" className="px-0 py-2">
       <MessageContent>
         {/* Loading message bubble */}
-        <Bubble variant="muted">
-          <BubbleContent
-            className={cn(
-              "rounded-lg px-3 py-2 text-sm bg-muted flex items-center gap-2"
-              // "rounded-bl-sm",
-            )}
-          >
+        <Bubble>
+          <BubbleContent className="rounded-lg px-3 py-2 text-sm bg-muted flex items-center gap-2">
             <Spinner className="stroke-5 size-4 stroke-muted-foreground" />
             {/* <span className="text-muted-foreground">Thinking...</span> */}
           </BubbleContent>
@@ -298,10 +294,20 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   const { editMessage, retryMessage } = useChatStore();
   const { sendMessage } = useChat();
 
-  // Debug tool calls
-  // if (message.toolCalls && message.toolCalls.length > 0) {
-  //   console.log('🔧 Message has tool calls:', message.toolCalls)
-  // }
+  // Whether the message has any visible body yet. An assistant message starts
+  // out empty while streaming, so its header/body should stay hidden until real
+  // content (or tool calls/reasoning/attachments) has arrived.
+  const hasRenderableBody =
+    message.content.trim().length > 0 ||
+    (message.toolCalls?.length ?? 0) > 0 ||
+    (message.attachments?.length ?? 0) > 0 ||
+    Boolean(message.reasoning);
+
+  // The footer actions (copy/retry/edit/thumbs) act on the final text response,
+  // so they should only appear once there's actual content — not while a tool
+  // call is still running and the text hasn't streamed in yet.
+  const hasActionableContent =
+    message.content.trim().length > 0 || Boolean(message.functionResult);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -361,11 +367,13 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
       <Message align={isUser ? "end" : "start"} className="px-0 py-2">
         <MessageContent className={cn("gap-1", isUser && "items-end")}>
           {/* Timestamp */}
-          <MessageHeader className={cn("px-1", isUser && "justify-end")}>
-            <span className="text-xs text-muted-foreground">
-              {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-            </span>
-          </MessageHeader>
+          {hasRenderableBody && (
+            <MessageHeader className={cn("px-1", isUser && "justify-end")}>
+              <span className="text-xs text-muted-foreground">
+                {formatDistanceToNow(message.timestamp, { addSuffix: true })}
+              </span>
+            </MessageHeader>
+          )}
 
           {/* Attachments - shown for user messages */}
           {isUser && message.attachments && message.attachments.length > 0 && (
@@ -440,15 +448,20 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                   <Collapsible className="rounded-lg px-3 py-2 text-sm break-words text-foreground font-light border border-border">
                     <CollapsibleTrigger asChild>
                       <button className="flex items-center justify-between w-full cursor-pointer group">
-                        <div className="flex items-center gap-2">
-                          <Lightbulb
-                            className="size-4 shrink-0"
-                            strokeWidth={1.5}
-                          />
-                          <span className="text-muted-foreground group-hover:underline text-sm">
-                            {toolCall.name}
-                          </span>
-                        </div>
+                        <Marker className="gap-2">
+                          <MarkerIcon>
+                            {toolCall.result ? (
+                              <Lightbulb className="size-4 shrink-0" strokeWidth={1.5} />
+                            ) : (
+                              <Spinner className="size-4 shrink-0 stroke-muted-foreground" />
+                            )}
+                          </MarkerIcon>
+                          <MarkerContent className="text-muted-foreground group-hover:underline text-sm">
+                            {toolCall.result
+                              ? toolCall.name
+                              : `Running ${toolCall.name}…`}
+                          </MarkerContent>
+                        </Marker>
                         <ChevronDown
                           className="size-4 shrink-0 text-muted-foreground group-data-[state=open]:rotate-180 transition-transform"
                           strokeWidth={1.5}
@@ -459,9 +472,9 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                       <div className="space-y-2 mt-2">
                         {/* Tool Arguments */}
                         <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                          <span className="text-muted-foreground text-xs font-medium">
-                            Request:
-                          </span>
+                          <Marker variant="separator" className="text-xs text-muted-foreground font-medium pb-1">
+                            <MarkerContent>Request</MarkerContent>
+                          </Marker>
                           <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
                             {formatToolCallArguments(toolCall.arguments)}
                           </pre>
@@ -482,10 +495,11 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                         {/* Tool Result */}
                         {toolCall.result && (
                           <div className="flex flex-col gap-1 bg-background/30 p-2 rounded-md relative">
-                            <span className="text-muted-foreground text-xs font-medium">
-                              Result:{" "}
-                              {toolCall.result.success ? "Success" : "Error"}
-                            </span>
+                            <Marker variant="separator" className="text-xs text-muted-foreground font-medium pb-1">
+                              <MarkerContent>
+                                Result: {toolCall.result.success ? "Success" : "Error"}
+                              </MarkerContent>
+                            </Marker>
                             <pre className="text-xs p-2 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
                               {formatToolCallResult(toolCall.result)}
                             </pre>
@@ -514,7 +528,7 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
 
           {/* Message bubble or editing textarea */}
           {isEditing && isUser ? (
-            <Bubble variant="muted" align="end">
+            <Bubble align="end">
               <BubbleContent className="rounded-lg px-3 py-2 text-sm bg-muted">
                 <Textarea
                   value={editContent}
@@ -536,18 +550,11 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
             </Bubble>
           ) : // Only render message bubble if there's content
           message.content.trim() ? (
-            <Bubble
-              variant={isUser ? "muted" : "ghost"}
-              align={isUser ? "end" : "start"}
-            >
+            <Bubble align={isUser ? "end" : "start"}>
               <BubbleContent
                 className={cn(
                   "rounded-lg px-3 py-2 text-sm break-words",
-                  isUser && "bg-muted",
-                  !isUser && [
-                    "text-foreground",
-                    // "rounded-bl-sm"
-                  ]
+                  isUser ? "bg-muted" : "text-foreground"
                 )}
               >
                 <div
@@ -633,24 +640,26 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
             </Bubble>
           ) : null}
 
-          {/* Only show actions when not editing */}
-          <MessageFooter className={cn(isUser && "justify-end")}>
-            {!isEditing && (
-              <ChatMessageActions message={message} onEdit={handleEdit} />
-            )}
+          {/* Only show actions when not editing and there's content to act on */}
+          {hasActionableContent && (
+            <MessageFooter className={cn(isUser && "justify-end")}>
+              {!isEditing && (
+                <ChatMessageActions message={message} onEdit={handleEdit} />
+              )}
 
-            {/* Function result indicator */}
-            {message.functionResult && (
-              <Badge
-                variant={message.functionResult.success ? "green" : "red"}
-                className="mt-1"
-              >
-                {message.functionResult.success
-                  ? "✓ Action completed"
-                  : "✗ Action failed"}
-              </Badge>
-            )}
-          </MessageFooter>
+              {/* Function result indicator */}
+              {message.functionResult && (
+                <Badge
+                  variant={message.functionResult.success ? "green" : "red"}
+                  className="mt-1"
+                >
+                  {message.functionResult.success
+                    ? "✓ Action completed"
+                    : "✗ Action failed"}
+                </Badge>
+              )}
+            </MessageFooter>
+          )}
 
           {/* Suggested actions */}
           {message.suggestedActions && message.suggestedActions.length > 0 && (
