@@ -227,17 +227,21 @@ export function ChatInput() {
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     setIsDragOver(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
+    const nextTarget = e.relatedTarget;
+    if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) {
+      return;
+    }
     setIsDragOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     setIsDragOver(false);
 
@@ -333,23 +337,78 @@ export function ChatInput() {
 
   return (
     <div className={layoutMode === "fullpage" ? "p-0" : "p-2"}>
-      <div className="border border-border rounded-xl">
-        <div className="relative flex flex-col overflow-hidden rounded-xl bg-muted/50">
+      <div
+        className={cn(
+          "relative flex flex-col overflow-hidden rounded-2xl border border-border bg-muted/50 transition-colors",
+          isDragOver && "bg-blue-50 dark:bg-blue-900/20"
+        )}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Attachments */}
+        {attachments.length > 0 && (
+          <div
+            className={cn(
+              "w-full px-2 pt-2 transition-opacity duration-200",
+              isDragOver && "pointer-events-none opacity-0"
+            )}
+          >
+            <AttachmentGroup className="gap-2 pb-3">
+              {attachments.map((attachment) => (
+                <AttachmentRoot
+                  key={attachment.id}
+                  orientation="vertical"
+                  className="w-[104px] max-w-[104px] cursor-pointer rounded-lg bg-background/80 shadow-sm"
+                >
+                  {renderAttachmentMedia(attachment)}
+                  <AttachmentContent className="flex flex-col gap-0.5 border-t p-2">
+                    <AttachmentTitle className="text-[11px] font-medium leading-tight">
+                      {attachment.name}
+                    </AttachmentTitle>
+                    <AttachmentDescription className="text-[10px] leading-tight">
+                      {formatFileSize(attachment.size)}
+                    </AttachmentDescription>
+                  </AttachmentContent>
+                  <AttachmentActions className="absolute -top-1.5 -right-1.5 z-20 opacity-100">
+                    <AttachmentAction
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeAttachment(attachment.id);
+                      }}
+                      size="icon"
+                      variant="secondary"
+                      className="size-6 rounded-full border border-border bg-background/95 shadow-sm"
+                      aria-label="Remove file"
+                      disabled={isLoading}
+                    >
+                      <X className="size-4" />
+                    </AttachmentAction>
+                  </AttachmentActions>
+                  <AttachmentTrigger
+                    aria-label={`Preview ${attachment.name}`}
+                    onClick={() => openAttachmentModal(attachment)}
+                  />
+                </AttachmentRoot>
+              ))}
+            </AttachmentGroup>
+          </div>
+        )}
+
+        <div className="relative flex flex-col">
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
             placeholder={isDragOver ? "" : "Ask question..."}
             disabled={isLoading}
             rows={1}
             className={cn(
               "field-sizing-fixed max-h-[120px] min-h-0 resize-none overflow-y-auto rounded-none border-none bg-transparent px-3 py-2 font-light shadow-none transition-all duration-200 focus-visible:ring-0 dark:bg-transparent",
-              isDragOver && "bg-blue-50 text-transparent dark:bg-blue-900/20"
+              attachments.length > 0 && "pt-1",
+              isDragOver && "text-transparent"
             )}
           />
 
@@ -488,9 +547,7 @@ export function ChatInput() {
                 variant="blue"
                 className={cn(
                   "rounded-full border-none w-8",
-                  isLoading
-                    ? "[&_svg]:!size-3"
-                    : "[&_svg]:!w-5 [&_svg]:!h-5"
+                  isLoading ? "[&_svg]:!size-3" : "[&_svg]:!w-5 [&_svg]:!h-5"
                 )}
                 aria-label={isLoading ? "Stop response" : "Send message"}
               >
@@ -503,52 +560,6 @@ export function ChatInput() {
             </div>
           </div>
         </div>
-
-        {/* Attachments */}
-        {attachments.length > 0 && (
-          <div className="w-full p-2">
-            <div className="flex w-full flex-col">
-              <AttachmentGroup className="gap-4 pt-2 pb-1">
-                {attachments.map((attachment) => (
-                  <AttachmentRoot
-                    key={attachment.id}
-                    orientation="vertical"
-                    className="w-[120px] max-w-[120px] cursor-pointer rounded-md bg-background"
-                  >
-                    {renderAttachmentMedia(attachment)}
-                    <AttachmentContent className="flex flex-col gap-0.5 border-t p-2">
-                      <AttachmentTitle className="text-[11px] font-medium">
-                        {attachment.name}
-                      </AttachmentTitle>
-                      <AttachmentDescription className="text-[10px]">
-                        {formatFileSize(attachment.size)}
-                      </AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentActions className="absolute -top-2 -right-2 z-20 opacity-0 transition-opacity group-hover/attachment:opacity-100">
-                      <AttachmentAction
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeAttachment(attachment.id);
-                        }}
-                        size="icon"
-                        variant="secondary"
-                        className="size-6 rounded-full"
-                        aria-label="Remove file"
-                        disabled={isLoading}
-                      >
-                        <X className="size-4" />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                    <AttachmentTrigger
-                      aria-label={`Preview ${attachment.name}`}
-                      onClick={() => openAttachmentModal(attachment)}
-                    />
-                  </AttachmentRoot>
-                ))}
-              </AttachmentGroup>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Attachment Preview Modal */}
