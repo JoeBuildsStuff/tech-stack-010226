@@ -1,23 +1,13 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import {
-  Lightbulb,
-  FileText,
-  FileVideo,
-  File,
-  FileArchive,
-  FileSpreadsheet,
-  Headphones,
-  Image as ImageIcon,
-} from "lucide-react";
+import { Lightbulb } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { ChatMessage as ChatMessageType, ChatAction } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
@@ -26,15 +16,7 @@ import {
 import ChatMessageActions from "./chat-message-actions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Attachment,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-  AttachmentTrigger,
-} from "@/components/ui/attachment";
+import { AttachmentGroup } from "@/components/ui/attachment";
 import {
   Message,
   MessageContent,
@@ -61,6 +43,9 @@ import { useState } from "react";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { useChat } from "@/hooks/use-chat";
 import Spinner from "@/components/ui/spinner";
+import { ChatAttachmentCard } from "@/components/chat/chat-attachment-card";
+import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
+import type { ChatAttachmentLike } from "@/lib/chat/attachments";
 
 // Import highlight.js styles
 import "highlight.js/styles/github-dark.css";
@@ -69,76 +54,6 @@ interface ChatMessageProps {
   message: ChatMessageType;
   onActionClick?: (action: ChatAction) => void;
 }
-
-interface MessageAttachment {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  url?: string;
-  data?: string; // base64 data for images
-}
-
-// Helper functions for file handling
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-};
-
-const getFileIcon = (attachment: MessageAttachment) => {
-  const fileType = attachment.type;
-  const fileName = attachment.name;
-
-  const iconMap = {
-    pdf: {
-      icon: FileText,
-      conditions: (type: string, name: string) =>
-        type.includes("pdf") ||
-        name.endsWith(".pdf") ||
-        type.includes("word") ||
-        name.endsWith(".doc") ||
-        name.endsWith(".docx"),
-    },
-    archive: {
-      icon: FileArchive,
-      conditions: (type: string, name: string) =>
-        type.includes("zip") ||
-        type.includes("archive") ||
-        name.endsWith(".zip") ||
-        name.endsWith(".rar"),
-    },
-    excel: {
-      icon: FileSpreadsheet,
-      conditions: (type: string, name: string) =>
-        type.includes("excel") ||
-        name.endsWith(".xls") ||
-        name.endsWith(".xlsx"),
-    },
-    video: {
-      icon: FileVideo,
-      conditions: (type: string) => type.includes("video/"),
-    },
-    audio: {
-      icon: Headphones,
-      conditions: (type: string) => type.includes("audio/"),
-    },
-    image: {
-      icon: ImageIcon,
-      conditions: (type: string) => type.startsWith("image/"),
-    },
-  };
-
-  for (const { icon: Icon, conditions } of Object.values(iconMap)) {
-    if (conditions(fileType, fileName)) {
-      return <Icon className="size-4 opacity-60" />;
-    }
-  }
-
-  return <File className="size-4 opacity-60" />;
-};
 
 // Citation component with popover
 const CitationPopover = ({
@@ -157,7 +72,12 @@ const CitationPopover = ({
       </PopoverTrigger>
       <PopoverContent className="p-3" align="start">
         <div className="space-y-2">
-          <a href={citation.url} target="_blank" rel="noopener noreferrer" className="inline-block">
+          <a
+            href={citation.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block"
+          >
             <Badge
               variant="blue"
               className="font-medium text-sm break-words whitespace-normal"
@@ -302,7 +222,7 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [selectedAttachment, setSelectedAttachment] =
-    useState<MessageAttachment | null>(null);
+    useState<ChatAttachmentLike | null>(null);
   const { editMessage, retryMessage } = useChatStore();
   const { sendMessage } = useChat();
 
@@ -355,7 +275,7 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
     setIsEditing(false);
   };
 
-  const openAttachmentModal = (attachment: MessageAttachment) => {
+  const openAttachmentModal = (attachment: ChatAttachmentLike) => {
     setSelectedAttachment(attachment);
   };
 
@@ -391,52 +311,12 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
           {isUser && message.attachments && message.attachments.length > 0 && (
             <AttachmentGroup className="max-w-72 gap-1.5 pb-1">
               {message.attachments.map((attachment) => (
-                <Attachment
+                <ChatAttachmentCard
                   key={attachment.id}
-                  orientation="vertical"
-                  size="xs"
-                  className="w-[60px] min-w-[60px] cursor-pointer rounded-md bg-background"
-                >
-                  {/* File Preview */}
-                  <AttachmentMedia
-                    variant={
-                      attachment.type.startsWith("image/") &&
-                      (attachment.data || attachment.url)
-                        ? "image"
-                        : "icon"
-                    }
-                    className="w-full rounded-t-[inherit] bg-accent"
-                  >
-                    {attachment.type.startsWith("image/") &&
-                    (attachment.data || attachment.url) ? (
-                      // Use base64 data when present (fresh uploads), otherwise fallback to signed URL
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={attachment.data || attachment.url!}
-                        alt={attachment.name}
-                        className="size-full rounded-t-[inherit] object-cover"
-                      />
-                    ) : (
-                      getFileIcon(attachment)
-                    )}
-                  </AttachmentMedia>
-
-                  {/* File Info */}
-                  <AttachmentContent className="flex flex-col gap-0 border-t p-1">
-                    <AttachmentTitle className="text-[9px] font-medium leading-tight">
-                      {attachment.name.length > 8
-                        ? attachment.name.substring(0, 8) + "..."
-                        : attachment.name}
-                    </AttachmentTitle>
-                    <AttachmentDescription className="text-[8px] leading-tight">
-                      {formatFileSize(attachment.size)}
-                    </AttachmentDescription>
-                  </AttachmentContent>
-                  <AttachmentTrigger
-                    aria-label={`Preview ${attachment.name}`}
-                    onClick={() => openAttachmentModal(attachment)}
-                  />
-                </Attachment>
+                  attachment={attachment}
+                  variant="message"
+                  onPreview={openAttachmentModal}
+                />
               ))}
             </AttachmentGroup>
           )}
@@ -462,7 +342,10 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                       <Marker className="gap-2">
                         <MarkerIcon>
                           {toolCall.result ? (
-                            <Lightbulb className="size-4 shrink-0" strokeWidth={1.5} />
+                            <Lightbulb
+                              className="size-4 shrink-0"
+                              strokeWidth={1.5}
+                            />
                           ) : (
                             <Spinner className="size-4 shrink-0 stroke-current" />
                           )}
@@ -489,7 +372,8 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                       {toolCall.result && (
                         <ToolCallPanel>
                           <ToolCallPanelTrigger>
-                            Result: {toolCall.result.success ? "Success" : "Error"}
+                            Result:{" "}
+                            {toolCall.result.success ? "Success" : "Error"}
                           </ToolCallPanelTrigger>
                           <ToolCallPanelContent>
                             <ToolCallCode
@@ -519,7 +403,11 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                   autoFocus
                 />
                 <div className="flex gap-2 items-center justify-end">
-                  <Button size="sm" onClick={handleEditCancel} variant="outline">
+                  <Button
+                    size="sm"
+                    onClick={handleEditCancel}
+                    variant="outline"
+                  >
                     Cancel
                   </Button>
                   <Button size="sm" onClick={handleEditSave} variant="outline">
@@ -538,7 +426,10 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                 )}
               >
                 <div
-                  className={cn("prose prose-sm max-w-none", "dark:prose-invert")}
+                  className={cn(
+                    "prose prose-sm max-w-none",
+                    "dark:prose-invert"
+                  )}
                 >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -546,7 +437,8 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                     components={{
                       // Only override what's absolutely necessary
                       code: ({ children, ...props }) => {
-                        const isInline = !props.className?.includes("language-");
+                        const isInline =
+                          !props.className?.includes("language-");
                         return isInline ? (
                           <code
                             className={cn(
@@ -643,7 +535,12 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
 
           {/* Suggested actions */}
           {message.suggestedActions && message.suggestedActions.length > 0 && (
-            <div className={cn("flex flex-wrap gap-2 mt-2", isUser && "justify-end")}>
+            <div
+              className={cn(
+                "flex flex-wrap gap-2 mt-2",
+                isUser && "justify-end"
+              )}
+            >
               {message.suggestedActions.map((action, index) => (
                 <button
                   key={index}
@@ -663,60 +560,10 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
         </MessageContent>
       </Message>
 
-      {/* Attachment Preview Modal */}
-      <Dialog open={!!selectedAttachment} onOpenChange={closeAttachmentModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-          <div className="relative">
-            {selectedAttachment && (
-              <div className="flex flex-col">
-                {/* File Header */}
-                <div className="flex items-center gap-3 p-4 border-b">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium truncate">
-                      {selectedAttachment.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAttachment.type} •{" "}
-                      {formatFileSize(selectedAttachment.size)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* File Content */}
-                <div className="flex-1 overflow-auto">
-                  {selectedAttachment.type.startsWith("image/") ? (
-                    <div className="flex items-center justify-center p-4">
-                      {/* Always use img to avoid Next/Image remote domain config */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={
-                          selectedAttachment.data ||
-                          selectedAttachment.url ||
-                          ""
-                        }
-                        alt={selectedAttachment.name}
-                        className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center p-8">
-                      <div className="text-center">
-                        {getFileIcon(selectedAttachment)}
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Preview not available for this file type
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedAttachment.name}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AttachmentPreviewDialog
+        attachment={selectedAttachment}
+        onOpenChange={closeAttachmentModal}
+      />
     </>
   );
 }

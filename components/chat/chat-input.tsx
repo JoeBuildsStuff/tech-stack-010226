@@ -1,38 +1,14 @@
 "use client";
 
 import { useState, useRef, KeyboardEvent } from "react";
-import {
-  FileText,
-  FileVideo,
-  File,
-  FileArchive,
-  FileSpreadsheet,
-  Headphones,
-  Image,
-  FileImage,
-  Globe,
-  X,
-  ArrowUp,
-  Square,
-  Paperclip,
-} from "lucide-react";
+import { FileImage, Globe, ArrowUp, Square, Paperclip } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
-import {
-  Attachment as AttachmentRoot,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-  AttachmentTrigger,
-} from "@/components/ui/attachment";
+import { AttachmentGroup } from "@/components/ui/attachment";
 import {
   Select,
   SelectContent,
@@ -40,15 +16,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { LowMediumHighIcon } from "@/components/icons/low-medium-high";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ChatAttachmentCard } from "@/components/chat/chat-attachment-card";
+import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
+import type { ChatAttachmentLike } from "@/lib/chat/attachments";
 
-export interface Attachment {
+export interface Attachment extends ChatAttachmentLike {
   id: string;
   file: File;
   name: string;
@@ -95,7 +73,7 @@ export function ChatInput() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedAttachment, setSelectedAttachment] =
-    useState<Attachment | null>(null);
+    useState<ChatAttachmentLike | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -198,7 +176,7 @@ export function ChatInput() {
     setAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
   };
 
-  const openAttachmentModal = (attachment: Attachment) => {
+  const openAttachmentModal = (attachment: ChatAttachmentLike) => {
     setSelectedAttachment(attachment);
   };
 
@@ -251,88 +229,6 @@ export function ChatInput() {
     }
   };
 
-  const getFileIcon = (attachment: Attachment) => {
-    const fileType = attachment.type;
-    const fileName = attachment.name;
-
-    const iconMap = {
-      pdf: {
-        icon: FileText,
-        conditions: (type: string, name: string) =>
-          type.includes("pdf") ||
-          name.endsWith(".pdf") ||
-          type.includes("word") ||
-          name.endsWith(".doc") ||
-          name.endsWith(".docx"),
-      },
-      archive: {
-        icon: FileArchive,
-        conditions: (type: string, name: string) =>
-          type.includes("zip") ||
-          type.includes("archive") ||
-          name.endsWith(".zip") ||
-          name.endsWith(".rar"),
-      },
-      excel: {
-        icon: FileSpreadsheet,
-        conditions: (type: string, name: string) =>
-          type.includes("excel") ||
-          name.endsWith(".xls") ||
-          name.endsWith(".xlsx"),
-      },
-      video: {
-        icon: FileVideo,
-        conditions: (type: string) => type.includes("video/"),
-      },
-      audio: {
-        icon: Headphones,
-        conditions: (type: string) => type.includes("audio/"),
-      },
-      image: {
-        icon: Image,
-        conditions: (type: string) => type.startsWith("image/"),
-      },
-    };
-
-    for (const { icon: Icon, conditions } of Object.values(iconMap)) {
-      if (conditions(fileType, fileName)) {
-        return <Icon className="size-5 opacity-60" />;
-      }
-    }
-
-    return <File className="size-5 opacity-60" />;
-  };
-
-  const renderAttachmentMedia = (attachment: Attachment) => {
-    const isImage = attachment.type.startsWith("image/");
-
-    return (
-      <AttachmentMedia
-        variant={isImage ? "image" : "icon"}
-        className="w-full rounded-t-[inherit] bg-accent"
-      >
-        {isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={URL.createObjectURL(attachment.file)}
-            alt={attachment.name}
-            className="size-full rounded-t-[inherit] object-cover"
-          />
-        ) : (
-          getFileIcon(attachment)
-        )}
-      </AttachmentMedia>
-    );
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
   // const canSend = (input.trim().length > 0 || attachments.length > 0) && !isLoading
 
   return (
@@ -356,40 +252,13 @@ export function ChatInput() {
           >
             <AttachmentGroup className="gap-2 pb-3">
               {attachments.map((attachment) => (
-                <AttachmentRoot
+                <ChatAttachmentCard
                   key={attachment.id}
-                  orientation="vertical"
-                  className="w-[104px] max-w-[104px] cursor-pointer rounded-lg bg-background/80 shadow-sm"
-                >
-                  {renderAttachmentMedia(attachment)}
-                  <AttachmentContent className="flex flex-col gap-0.5 border-t p-2">
-                    <AttachmentTitle className="text-[11px] font-medium leading-tight">
-                      {attachment.name}
-                    </AttachmentTitle>
-                    <AttachmentDescription className="text-[10px] leading-tight">
-                      {formatFileSize(attachment.size)}
-                    </AttachmentDescription>
-                  </AttachmentContent>
-                  <AttachmentActions className="absolute -top-1.5 -right-1.5 z-20 opacity-100">
-                    <AttachmentAction
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeAttachment(attachment.id);
-                      }}
-                      size="icon"
-                      variant="secondary"
-                      className="size-6 rounded-full border border-border bg-background/95 shadow-sm"
-                      aria-label="Remove file"
-                      disabled={isLoading}
-                    >
-                      <X className="size-4" />
-                    </AttachmentAction>
-                  </AttachmentActions>
-                  <AttachmentTrigger
-                    aria-label={`Preview ${attachment.name}`}
-                    onClick={() => openAttachmentModal(attachment)}
-                  />
-                </AttachmentRoot>
+                  attachment={attachment}
+                  disabled={isLoading}
+                  onPreview={openAttachmentModal}
+                  onRemove={removeAttachment}
+                />
               ))}
             </AttachmentGroup>
           </div>
@@ -562,55 +431,10 @@ export function ChatInput() {
         </div>
       </div>
 
-      {/* Attachment Preview Modal */}
-      <Dialog open={!!selectedAttachment} onOpenChange={closeAttachmentModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-          <div className="relative">
-            {selectedAttachment && (
-              <div className="flex flex-col">
-                {/* File Header */}
-                <div className="flex items-center gap-3 p-4 border-b">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium truncate">
-                      {selectedAttachment.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAttachment.type} •{" "}
-                      {formatFileSize(selectedAttachment.size)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* File Content */}
-                <div className="flex-1 overflow-auto">
-                  {selectedAttachment.type.startsWith("image/") ? (
-                    <div className="flex items-center justify-center p-4">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={URL.createObjectURL(selectedAttachment.file)}
-                        alt={selectedAttachment.name}
-                        className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center p-8">
-                      <div className="text-center">
-                        {getFileIcon(selectedAttachment)}
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Preview not available for this file type
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedAttachment.name}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AttachmentPreviewDialog
+        attachment={selectedAttachment}
+        onOpenChange={closeAttachmentModal}
+      />
     </div>
   );
 }
