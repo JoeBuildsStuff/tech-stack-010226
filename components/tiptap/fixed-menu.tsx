@@ -17,6 +17,7 @@ import {
   Underline,
   Code,
   MessageSquare,
+  FileDiff,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import {
@@ -35,19 +36,24 @@ import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/tiptap/link-button";
 import TableButton from "@/components/tiptap/table-button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { Separator } from "@/components/ui/separator";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { ScrollBar } from "@/components/ui/scroll-area";
 
 interface FixedMenuProps {
   editor: Editor;
-  showComments?: boolean;
-  onShowCommentsChange?: (show: boolean) => void;
+  showReview?: boolean;
+  onShowReviewChange?: (show: boolean) => void;
+  suggesting?: boolean;
+  onSuggestingChange?: (value: boolean) => void;
 }
 
 const FixedMenu = ({
   editor,
-  showComments,
-  onShowCommentsChange,
+  showReview,
+  onShowReviewChange,
+  suggesting,
+  onSuggestingChange,
 }: FixedMenuProps) => {
   const editorState = useEditorState({
     editor,
@@ -348,27 +354,27 @@ const FixedMenu = ({
               </Tooltip>
               <LinkButton editor={editor} size="sm" />
               <TableButton editor={editor} size="sm" />
-              {onShowCommentsChange ? (
+              {onSuggestingChange ? (
                 <Tooltip>
                   <TooltipTrigger>
                     <Toggle
                       size="sm"
-                      pressed={showComments ?? false}
-                      onPressedChange={onShowCommentsChange}
+                      pressed={suggesting ?? false}
+                      onPressedChange={onSuggestingChange}
                       aria-label={
-                        showComments
-                          ? "Hide comments panel"
-                          : "Show comments panel"
+                        suggesting
+                          ? "Turn off suggesting mode"
+                          : "Turn on suggesting mode"
                       }
                     >
-                      <MessageSquare className="" />
+                      <FileDiff className="" />
                     </Toggle>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>
-                      {showComments
-                        ? "Hide comments panel"
-                        : "Show comments panel"}
+                      {suggesting
+                        ? "Suggesting mode on"
+                        : "Suggesting mode off"}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -376,7 +382,8 @@ const FixedMenu = ({
             </div>
           </div>
 
-          <div className="flex flex-row gap-1">
+          <div className="flex flex-row items-center gap-1">
+            <Separator orientation="vertical" className="mx-1 h-6" />
             <CopyButton
               textToCopy={getContentToCopy()}
               size="sm"
@@ -385,6 +392,27 @@ const FixedMenu = ({
               successMessage="Content copied to clipboard"
               errorMessage="Failed to copy content"
             />
+            {onShowReviewChange ? (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Toggle
+                    size="sm"
+                    pressed={showReview ?? false}
+                    onPressedChange={onShowReviewChange}
+                    aria-label={
+                      showReview ? "Hide review panel" : "Show review panel"
+                    }
+                  >
+                    <MessageSquare className="" />
+                  </Toggle>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {showReview ? "Hide review panel" : "Show review panel"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
       </ScrollAreaPrimitive.Viewport>

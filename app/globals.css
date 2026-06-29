@@ -240,25 +240,102 @@
   }
 }
 
+/* Wire @tailwindcss/typography to shadcn theme tokens (:root / .dark).
+   Regular and invert vars share the same semantic tokens — .dark retokens them. */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-kbd-shadows: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--muted-foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  --tw-prose-invert-body: var(--foreground);
+  --tw-prose-invert-headings: var(--foreground);
+  --tw-prose-invert-lead: var(--muted-foreground);
+  --tw-prose-invert-links: var(--primary);
+  --tw-prose-invert-bold: var(--foreground);
+  --tw-prose-invert-counters: var(--muted-foreground);
+  --tw-prose-invert-bullets: var(--muted-foreground);
+  --tw-prose-invert-hr: var(--border);
+  --tw-prose-invert-quotes: var(--foreground);
+  --tw-prose-invert-quote-borders: var(--border);
+  --tw-prose-invert-captions: var(--muted-foreground);
+  --tw-prose-invert-kbd: var(--foreground);
+  --tw-prose-invert-kbd-shadows: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --tw-prose-invert-code: var(--foreground);
+  --tw-prose-invert-pre-code: var(--muted-foreground);
+  --tw-prose-invert-pre-bg: var(--muted);
+  --tw-prose-invert-th-borders: var(--border);
+  --tw-prose-invert-td-borders: var(--border);
+}
+
 .tiptap-thread {
   border-radius: 0.25rem;
-  transition: background-color 120ms ease;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
 .tiptap-thread--inline.tiptap-thread--unresolved {
-  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  @apply bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20 dark:ring-amber-600/30;
 }
 
 .tiptap-thread--inline.tiptap-thread--resolved {
-  background: color-mix(in oklab, var(--muted-foreground) 18%, transparent);
+  @apply bg-gray-50 text-gray-600 dark:bg-gray-900/20 dark:text-gray-400 ring-1 ring-inset ring-gray-500/10 dark:ring-gray-600/50;
 }
 
 .tiptap-thread--hovered {
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--primary) 70%, transparent);
+  @apply ring-amber-600/35 dark:ring-amber-500/45;
 }
 
 .tiptap-thread--selected {
-  background: color-mix(in oklab, var(--primary) 28%, transparent);
+  @apply ring-2 ring-amber-600/40 dark:ring-amber-500/50;
+}
+
+/* Redline (tracked changes) marks. Always render so saved suggestions show up
+   even when suggesting mode is off. Colors match Badge green/red variants. */
+.redline-insertion {
+  @apply bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 ring-1 ring-inset ring-green-600/20 dark:ring-green-600/30;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: box-shadow 120ms ease;
+}
+
+.redline-deletion {
+  @apply bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 ring-1 ring-inset ring-red-600/10 dark:ring-red-600/30;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+  transition: box-shadow 120ms ease;
+}
+
+.redline-highlight {
+  border-radius: 0.25rem;
+  transition: box-shadow 120ms ease;
+}
+
+.redline-highlight--hovered {
+  box-shadow: inset 0 -1px 0
+    color-mix(in oklab, var(--primary) 70%, transparent);
+}
+
+.redline-highlight--selected {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklab, var(--primary) 55%, transparent);
 }
 
 .ProseMirror:focus {

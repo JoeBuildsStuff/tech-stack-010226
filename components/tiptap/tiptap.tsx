@@ -38,15 +38,17 @@ import FixedMenu from "@/components/tiptap/fixed-menu";
 import BubbleMenuComponent from "@/components/tiptap/bubble-menu";
 import { createFileHandlerConfig } from "@/components/tiptap/file-handler";
 import { useDocumentComments } from "@/components/tiptap/use-document-comments";
+import { useDocumentSuggestions } from "@/components/tiptap/use-document-suggestions";
 import { CommentComposerPopover } from "@/components/tiptap/comment-composer-popover";
-import { CommentsPanel } from "@/components/tiptap/comments-panel";
-import type { ThreadVisibilityFilters } from "@/components/tiptap/comment-thread-types";
+import { ReviewPanel } from "@/components/tiptap/review-panel";
+import { InsertionMark, DeletionMark } from "@/components/tiptap/redline-marks";
+import type { ReviewFilters, ReviewItem } from "@/components/tiptap/review-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SlashCommandMenu } from "@/components/tiptap/slash-command-menu";
 import { TableHoverControls } from "@/components/tiptap/table-hover-controls";
 
 const lowlight = createLowlight(common);
-const DEFAULT_SHOW_COMMENTS = false;
+const DEFAULT_SHOW_REVIEW = false;
 
 const CustomCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
@@ -147,23 +149,29 @@ const Tiptap = ({
   fileUploadConfig,
   enableFileNodes = true,
   onRequestCommentFromSelection,
-  showComments,
-  onShowCommentsChange,
+  showReview,
+  onShowReviewChange,
   commentsDocumentId,
+  redlineDocumentId,
 }: TiptapProps) => {
   const commentsEnabled = Boolean(commentsDocumentId);
+  const redlineEnabled = Boolean(redlineDocumentId);
   const editorContentRef = useRef<HTMLDivElement | null>(null);
-  const [internalShowComments, setInternalShowComments] = useState(
-    DEFAULT_SHOW_COMMENTS
-  );
-  const [threadFilters, setThreadFilters] = useState<ThreadVisibilityFilters>({
+  const [internalShowReview, setInternalShowReview] =
+    useState(DEFAULT_SHOW_REVIEW);
+  const [reviewFilters, setReviewFilters] = useState<ReviewFilters>({
     open: true,
     resolved: false,
+    suggestions: true,
   });
 
-  const effectiveShowComments = showComments ?? internalShowComments;
-  const setEffectiveShowComments =
-    onShowCommentsChange ?? setInternalShowComments;
+  const effectiveShowReview = showReview ?? internalShowReview;
+  const setEffectiveShowReview = onShowReviewChange ?? setInternalShowReview;
+
+  const threadFilters = useMemo(
+    () => ({ open: reviewFilters.open, resolved: reviewFilters.resolved }),
+    [reviewFilters.open, reviewFilters.resolved]
+  );
 
   const {
     setEditor: setCommentsEditor,
@@ -204,6 +212,29 @@ const Tiptap = ({
       : {}
   );
 
+  const {
+    setEditor: setSuggestionsEditor,
+    trackChangesExtension,
+    handleEditorUpdate: handleSuggestionsUpdate,
+    suggesting,
+    setSuggesting,
+    currentUserId: suggestionsUserId,
+    initials: suggestionsInitials,
+    isLoadingSuggestions,
+    suggestions,
+    selectedSuggestionId,
+    setSelectedSuggestionId,
+    handleSelectSuggestion,
+    handleHoverSuggestion,
+    handleAcceptSuggestion,
+    handleRejectSuggestion,
+    handleCreateSuggestionReply,
+    handleUpdateSuggestionReply,
+    handleDeleteSuggestionReply,
+  } = useDocumentSuggestions({
+    documentId: redlineDocumentId,
+  });
+
   const commentSelectionHandler = commentsEnabled
     ? handleOpenComposer
     : onRequestCommentFromSelection;
@@ -211,6 +242,17 @@ const Tiptap = ({
   const extensions = useMemo(
     () => (commentsEnabled ? [commentExtension] : []),
     [commentExtension, commentsEnabled]
+  );
+
+  // Redline marks are always registered when redline is enabled so saved
+  // suggestions render even with suggesting mode off; interception is gated
+  // by the suggesting flag inside the TrackChanges plugin.
+  const redlineExtensions = useMemo(
+    () =>
+      redlineEnabled
+        ? [InsertionMark, DeletionMark, trackChangesExtension]
+        : [],
+    [redlineEnabled, trackChangesExtension]
   );
 
   const editor = useEditor({
@@ -295,6 +337,7 @@ const Tiptap = ({
       }),
       ...(enableFileNodes ? [FileNode] : []),
       ...extensions,
+      ...redlineExtensions,
     ],
     content: content || "",
     immediatelyRender: false,
@@ -322,6 +365,10 @@ const Tiptap = ({
         queueAnchorSync();
       }
 
+      if (redlineEnabled) {
+        handleSuggestionsUpdate();
+      }
+
       if (onChange) {
         onChange(editor.getHTML());
       }
@@ -344,6 +391,14 @@ const Tiptap = ({
 
     setCommentsEditor(editor ?? null);
   }, [commentsEnabled, editor, setCommentsEditor]);
+
+  useEffect(() => {
+    if (!redlineEnabled) {
+      return;
+    }
+
+    setSuggestionsEditor(editor ?? null);
+  }, [redlineEnabled, editor, setSuggestionsEditor]);
 
   useEffect(() => {
     if (editor) {
@@ -403,11 +458,40 @@ const Tiptap = ({
     );
   }
 
+  const reviewEnabled = commentsEnabled || redlineEnabled;
+
+  // Merge comment threads and redline suggestions into a single position-sorted
+  // feed so they interleave in document order (one unified review column).
+  const reviewItems: ReviewItem[] = [
+    ...(commentsEnabled
+      ? threads
+          .filter((thread) =>
+            thread.status === "unresolved"
+              ? reviewFilters.open
+              : reviewFilters.resolved
+          )
+          .map((thread) => ({
+            type: "comment" as const,
+            id: thread.id,
+            position: thread.anchorFrom,
+            thread,
+          }))
+      : []),
+    ...(redlineEnabled && reviewFilters.suggestions
+      ? suggestions.map((suggestion) => ({
+          type: "suggestion" as const,
+          id: suggestion.id,
+          position: suggestion.from,
+          suggestion,
+        }))
+      : []),
+  ].sort((a, b) => a.position - b.position);
+
   return (
     <div
       className={
-        commentsEnabled
-          ? `flex h-full min-h-0 ${effectiveShowComments ? "gap-2" : "gap-0"}`
+        reviewEnabled
+          ? `flex h-full min-h-0 ${effectiveShowReview ? "gap-1" : "gap-0"}`
           : "h-full min-h-0"
       }
     >
@@ -417,10 +501,16 @@ const Tiptap = ({
             <div className="sticky top-0 z-10 bg-card/80 backdrop-blur-lg rounded-lg">
               <FixedMenu
                 editor={editor}
-                {...(commentsEnabled
+                {...(reviewEnabled
                   ? {
-                      showComments: effectiveShowComments,
-                      onShowCommentsChange: setEffectiveShowComments,
+                      showReview: effectiveShowReview,
+                      onShowReviewChange: setEffectiveShowReview,
+                    }
+                  : {})}
+                {...(redlineEnabled
+                  ? {
+                      suggesting,
+                      onSuggestingChange: setSuggesting,
                     }
                   : {})}
               />
@@ -473,21 +563,26 @@ const Tiptap = ({
         ) : null}
       </div>
 
-      {commentsEnabled ? (
+      {reviewEnabled ? (
         <div
-          className={`flex shrink-0 overflow-hidden transition-[width] duration-200 ease-linear ${effectiveShowComments ? "w-80" : "w-0"}`}
+          className={`flex shrink-0 overflow-hidden transition-[width] duration-200 ease-linear ${effectiveShowReview ? "w-80" : "w-0"}`}
         >
-          <CommentsPanel
-            showComments={effectiveShowComments}
-            isLoadingThreads={isLoadingThreads}
-            threads={threads}
-            selectedThreadId={selectedThreadId}
-            currentUserId={currentUserId}
-            currentUserInitials={initials}
+          <ReviewPanel
+            showReview={effectiveShowReview}
+            items={reviewItems}
+            isLoading={isLoadingThreads || isLoadingSuggestions}
+            currentUserId={currentUserId ?? suggestionsUserId}
+            currentUserInitials={initials || suggestionsInitials}
             currentUserAvatarUrl={currentUserAvatarUrl}
+            filters={reviewFilters}
+            onFiltersChange={setReviewFilters}
+            onClose={() => setEffectiveShowReview(false)}
+            selectedThreadId={selectedThreadId}
             replyContent={replyContent}
             onReplyContentChange={setReplyContent}
             onSelectThread={(threadId) => {
+              setSelectedSuggestionId(null);
+              editor.commands.selectSuggestion(null);
               setSelectedThreadId(threadId);
               editor.commands.selectCommentThread(threadId);
               editor.commands.focusCommentThread(threadId);
@@ -500,9 +595,18 @@ const Tiptap = ({
             onDeleteThread={handleDeleteThread}
             onDeleteComment={handleDeleteComment}
             onUpdateComment={handleUpdateComment}
-            threadFilters={threadFilters}
-            onThreadFiltersChange={setThreadFilters}
-            onCloseComments={() => setEffectiveShowComments(false)}
+            selectedSuggestionId={selectedSuggestionId}
+            onSelectSuggestion={(suggestionId) => {
+              setSelectedThreadId(null);
+              editor.commands.selectCommentThread(null);
+              handleSelectSuggestion(suggestionId);
+            }}
+            onHoverSuggestion={handleHoverSuggestion}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onRejectSuggestion={handleRejectSuggestion}
+            onCreateSuggestionReply={handleCreateSuggestionReply}
+            onUpdateSuggestionReply={handleUpdateSuggestionReply}
+            onDeleteSuggestionReply={handleDeleteSuggestionReply}
           />
         </div>
       ) : null}

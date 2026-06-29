@@ -283,6 +283,7 @@ export function NotesEditorClient({
           content={content}
           onChange={handleChange}
           commentsDocumentId={noteId}
+          redlineDocumentId={noteId}
           enableFileNodes
         />
       </div>

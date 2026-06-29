@@ -5,8 +5,10 @@ This folder contains the rich-text editor used by the Notes feature at `/dashboa
 It is not just a generic editor wrapper. In this repo it includes:
 - Supabase-backed file upload/render/delete for images and files.
 - Inline comment threads anchored to text ranges.
-- A comments side panel and composer popover.
-- API + database integration for comment CRUD and anchor sync.
+- Redline (tracked-changes) suggestions with accept/reject and replies.
+- A single unified **review** side panel that interleaves comments and
+  suggestions in document order, plus a comment composer popover.
+- API + database integration for comment/suggestion CRUD and anchor sync.
 
 ## Where It Is Used
 
@@ -16,7 +18,9 @@ Main integration:
 The notes page passes:
 - `content` and `onChange` for autosave.
 - `commentsDocumentId={noteId}` to enable built-in comments mode.
-- `showComments` / `onShowCommentsChange` to control the side panel.
+- `redlineDocumentId={noteId}` to enable tracked-changes suggestions.
+- `showReview` / `onShowReviewChange` to control the unified review panel
+  (optional — when omitted, `Tiptap` manages panel visibility internally).
 - `enableFileNodes` to allow non-image file nodes.
 
 ## Key Files
@@ -25,13 +29,17 @@ Core editor:
 - `components/tiptap/tiptap.tsx`
 - `components/tiptap/types.ts`
 
-Comments UI/state:
+Review UI/state (unified comments + suggestions):
+- `components/tiptap/review-panel.tsx` (single merged side panel)
+- `components/tiptap/review-types.ts` (`ReviewItem`, `ReviewFilters`)
 - `components/tiptap/use-document-comments.ts`
+- `components/tiptap/use-document-suggestions.ts`
 - `components/tiptap/comment-anchors.ts`
 - `components/tiptap/comment-composer-popover.tsx`
-- `components/tiptap/comments-panel.tsx`
 - `components/tiptap/comment-input-editor.tsx`
 - `components/tiptap/comment-thread-types.ts`
+- `components/tiptap/suggestion-types.ts`
+- `components/tiptap/track-changes.ts` / `components/tiptap/redline-marks.ts`
 
 Files/media:
 - `components/tiptap/file-handler.tsx`
@@ -40,8 +48,9 @@ Files/media:
 - `components/tiptap/custom-image-view.tsx`
 - `components/tiptap/supabase-file-manager.ts`
 
-Server-side comment data access:
+Server-side data access:
 - `components/tiptap/lib/comments.ts`
+- `components/tiptap/lib/suggestions.ts` (suggestion reconcile/resolve + replies)
 
 ## Comments Mode (Built-In)
 
@@ -87,6 +96,12 @@ Comments routes:
 - `app/api/documents/[id]/threads/[threadId]/comments/route.ts`
 - `app/api/documents/[id]/threads/[threadId]/comments/[commentId]/route.ts`
 
+Suggestions routes:
+- `app/api/documents/[id]/suggestions/route.ts` (list + reconcile)
+- `app/api/documents/[id]/suggestions/[suggestionId]/route.ts` (accept/reject)
+- `app/api/documents/[id]/suggestions/[suggestionId]/comments/route.ts` (reply create)
+- `app/api/documents/[id]/suggestions/[suggestionId]/comments/[commentId]/route.ts` (reply edit/delete)
+
 Comment route auth behavior:
 - `PATCH` / `DELETE` on `comments/[commentId]` return `403` when the authenticated user is not the comment author.
 
@@ -97,16 +112,22 @@ File routes expected by `supabase-file-manager.ts`:
 
 ## Database Dependencies
 
-Comments and notes rely on schema `tech_stack_2026` and tables:
+Comments, suggestions, and notes rely on schema `tech_stack_2026` and tables:
 - `notes`
 - `comment_threads`
-- `comments`
+- `comments` (a row belongs to **either** a `thread_id` or a `suggestion_id`)
+- `note_suggestions`
 
-Migration:
+Migrations:
 - `supabase/migrations/20260222100000_add_comments_tables.sql`
   - Includes RPC functions used by the comments backend:
     - `public.create_note_comment_thread_with_root(...)`
     - `public.batch_update_note_comment_thread_anchors(...)`
+- `supabase/migrations/20260627000000_add_note_suggestions.sql`
+  - `note_suggestions` table + `reconcile_note_suggestions(...)` RPC.
+- `supabase/migrations/20260628120000_add_suggestion_replies.sql`
+  - Adds `comments.suggestion_id`, makes `thread_id` nullable, and adds the
+    single-parent CHECK + suggestion-scoped RLS policies enabling replies.
 
 Data access logic:
 - `components/tiptap/lib/comments.ts`
@@ -118,8 +139,9 @@ Data access logic:
   content={content}
   onChange={setContent}
   commentsDocumentId={noteId}
-  showComments={showComments}
-  onShowCommentsChange={setShowComments}
+  redlineDocumentId={noteId}
+  showReview={showReview}
+  onShowReviewChange={setShowReview}
   enableFileNodes
 />
 ```

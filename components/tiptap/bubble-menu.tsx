@@ -379,8 +379,9 @@ const BubbleMenuComponent = ({
             <TooltipTrigger asChild>
               <Button
                 size="sm"
-                variant="secondary"
+                variant="ghost"
                 className="text-xs"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleRequestComment}
               >
                 <MessageSquare className="" />

@@ -581,7 +581,6 @@ export function useDocumentComments({
   }, []);
 
   return {
-    editor,
     setEditor,
     commentExtension,
     queueAnchorSync,

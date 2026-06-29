@@ -37,12 +37,14 @@ export interface TiptapProps {
   enableFileNodes?: boolean
   /** Called when the user requests to comment on selected text */
   onRequestCommentFromSelection?: (payload: CommentSelectionPayload) => void
-  /** Whether comments panel is visible */
-  showComments?: boolean
-  /** Callback when comments panel visibility should change */
-  onShowCommentsChange?: (show: boolean) => void
+  /** Whether the unified review panel (comments + suggestions) is visible */
+  showReview?: boolean
+  /** Callback when the review panel visibility should change */
+  onShowReviewChange?: (show: boolean) => void
   /** Document id used by built-in comments CRUD */
   commentsDocumentId?: string
+  /** Document id used by built-in redline (tracked changes) suggestions */
+  redlineDocumentId?: string
 }
 
 export interface FileUploadResult {
