@@ -6,7 +6,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
-  Grid2x2Plus,
+  Grid2x2,
   List,
   ListOrdered,
   Minus,
@@ -34,16 +34,81 @@ type SlashCommand = {
 };
 
 const COMMANDS: SlashCommand[] = [
-  { label: "Text", description: "Plain paragraph", icon: Type, group: "Text", run: (editor) => editor.chain().focus().setParagraph().run() },
-  { label: "Large heading", description: "Heading 1", icon: Heading1, group: "Text", run: (editor) => editor.chain().focus().setHeading({ level: 1 }).run() },
-  { label: "Medium heading", description: "Heading 2", icon: Heading2, group: "Text", run: (editor) => editor.chain().focus().setHeading({ level: 2 }).run() },
-  { label: "Small heading", description: "Heading 3", icon: Heading3, group: "Text", run: (editor) => editor.chain().focus().setHeading({ level: 3 }).run() },
-  { label: "Block quote", description: "Add a quote block", icon: TextQuote, group: "Text", run: (editor) => editor.chain().focus().toggleBlockquote().run() },
-  { label: "Code block", description: "Add a code block", icon: Code, group: "Text", run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
-  { label: "Bullet list", description: "Create a bulleted list", icon: List, group: "List", run: (editor) => editor.chain().focus().toggleBulletList().run() },
-  { label: "Ordered list", description: "Create a numbered list", icon: ListOrdered, group: "List", run: (editor) => editor.chain().focus().toggleOrderedList().run() },
-  { label: "Table", description: "Insert a table", icon: Grid2x2Plus, group: "Layout", run: (editor) => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run() },
-  { label: "Divider", description: "Insert a horizontal rule", icon: Minus, group: "Layout", run: (editor) => editor.chain().focus().setHorizontalRule().run() },
+  {
+    label: "Text",
+    description: "Plain paragraph",
+    icon: Type,
+    group: "Text",
+    run: (editor) => editor.chain().focus().setParagraph().run(),
+  },
+  {
+    label: "Large heading",
+    description: "Heading 1",
+    icon: Heading1,
+    group: "Text",
+    run: (editor) => editor.chain().focus().setHeading({ level: 1 }).run(),
+  },
+  {
+    label: "Medium heading",
+    description: "Heading 2",
+    icon: Heading2,
+    group: "Text",
+    run: (editor) => editor.chain().focus().setHeading({ level: 2 }).run(),
+  },
+  {
+    label: "Small heading",
+    description: "Heading 3",
+    icon: Heading3,
+    group: "Text",
+    run: (editor) => editor.chain().focus().setHeading({ level: 3 }).run(),
+  },
+  {
+    label: "Block quote",
+    description: "Add a quote block",
+    icon: TextQuote,
+    group: "Text",
+    run: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  {
+    label: "Code block",
+    description: "Add a code block",
+    icon: Code,
+    group: "Text",
+    run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
+  },
+  {
+    label: "Bullet list",
+    description: "Create a bulleted list",
+    icon: List,
+    group: "List",
+    run: (editor) => editor.chain().focus().toggleBulletList().run(),
+  },
+  {
+    label: "Ordered list",
+    description: "Create a numbered list",
+    icon: ListOrdered,
+    group: "List",
+    run: (editor) => editor.chain().focus().toggleOrderedList().run(),
+  },
+  {
+    label: "Table",
+    description: "Insert a table",
+    icon: Grid2x2,
+    group: "Layout",
+    run: (editor) =>
+      editor
+        .chain()
+        .focus()
+        .insertTable({ rows: 2, cols: 2, withHeaderRow: true })
+        .run(),
+  },
+  {
+    label: "Divider",
+    description: "Insert a horizontal rule",
+    icon: Minus,
+    group: "Layout",
+    run: (editor) => editor.chain().focus().setHorizontalRule().run(),
+  },
 ];
 
 const COMMAND_GROUPS: CommandGroup[] = ["Text", "List", "Layout"];
@@ -61,8 +126,15 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
       return;
     }
 
-    const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
-    const currentLine = textBeforeCursor.slice(textBeforeCursor.lastIndexOf("\n") + 1);
+    const textBeforeCursor = $from.parent.textBetween(
+      0,
+      $from.parentOffset,
+      undefined,
+      "\ufffc"
+    );
+    const currentLine = textBeforeCursor.slice(
+      textBeforeCursor.lastIndexOf("\n") + 1
+    );
     if (!currentLine.startsWith("/") || currentLine.includes(" ")) {
       setMenu(null);
       return;
@@ -78,16 +150,28 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
   }, [editor]);
 
   const filteredCommands = useMemo(
-    () => COMMANDS.filter((command) => `${command.label} ${command.description}`.toLowerCase().includes(menu?.query ?? "")),
+    () =>
+      COMMANDS.filter((command) =>
+        `${command.label} ${command.description}`
+          .toLowerCase()
+          .includes(menu?.query ?? "")
+      ),
     [menu?.query]
   );
 
-  const chooseCommand = useCallback((command: SlashCommand) => {
-    if (!menu) return;
-    editor.chain().focus().deleteRange({ from: menu.from, to: editor.state.selection.from }).run();
-    command.run(editor);
-    setMenu(null);
-  }, [editor, menu]);
+  const chooseCommand = useCallback(
+    (command: SlashCommand) => {
+      if (!menu) return;
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from: menu.from, to: editor.state.selection.from })
+        .run();
+      command.run(editor);
+      setMenu(null);
+    },
+    [editor, menu]
+  );
 
   useEffect(() => {
     editor.on("transaction", updateMenu);
@@ -105,10 +189,16 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSelectedIndex((index) => (index + 1) % Math.max(filteredCommands.length, 1));
+        setSelectedIndex(
+          (index) => (index + 1) % Math.max(filteredCommands.length, 1)
+        );
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setSelectedIndex((index) => (index - 1 + Math.max(filteredCommands.length, 1)) % Math.max(filteredCommands.length, 1));
+        setSelectedIndex(
+          (index) =>
+            (index - 1 + Math.max(filteredCommands.length, 1)) %
+            Math.max(filteredCommands.length, 1)
+        );
       } else if (event.key === "Enter" && filteredCommands.length) {
         event.preventDefault();
         chooseCommand(filteredCommands[selectedIndex] ?? filteredCommands[0]);
@@ -118,15 +208,25 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
       }
     };
     editor.view.dom.addEventListener("keydown", handleKeyDown, true);
-    return () => editor.view.dom.removeEventListener("keydown", handleKeyDown, true);
+    return () =>
+      editor.view.dom.removeEventListener("keydown", handleKeyDown, true);
   }, [chooseCommand, editor, filteredCommands, menu, selectedIndex]);
 
   if (!menu) return null;
 
-  const activeIndex = Math.min(selectedIndex, Math.max(filteredCommands.length - 1, 0));
+  const activeIndex = Math.min(
+    selectedIndex,
+    Math.max(filteredCommands.length - 1, 0)
+  );
 
   return (
-    <DropdownMenu open modal={false} onOpenChange={(open) => { if (!open) setMenu(null); }}>
+    <DropdownMenu
+      open
+      modal={false}
+      onOpenChange={(open) => {
+        if (!open) setMenu(null);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <span
           aria-hidden="true"
@@ -142,33 +242,47 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
         className="w-52"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-      {filteredCommands.length ? COMMAND_GROUPS.map((group) => {
-        const commands = filteredCommands.filter((command) => command.group === group);
-        if (!commands.length) return null;
+        {filteredCommands.length ? (
+          COMMAND_GROUPS.map((group) => {
+            const commands = filteredCommands.filter(
+              (command) => command.group === group
+            );
+            if (!commands.length) return null;
 
-        return (
-          <div key={group}>
-            <DropdownMenuLabel className="text-xs text-muted-foreground">{group}</DropdownMenuLabel>
-            <DropdownMenuGroup>
-              {commands.map((command) => {
-                const index = filteredCommands.indexOf(command);
-                const Icon = command.icon;
-                return (
-                  <DropdownMenuItem
-                    key={command.label}
-                    className={index === activeIndex ? "bg-accent text-accent-foreground" : undefined}
-                    onSelect={() => chooseCommand(command)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                  >
-                    <Icon />
-                    <span>{command.label}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuGroup>
+            return (
+              <div key={group}>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  {group}
+                </DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  {commands.map((command) => {
+                    const index = filteredCommands.indexOf(command);
+                    const Icon = command.icon;
+                    return (
+                      <DropdownMenuItem
+                        key={command.label}
+                        className={
+                          index === activeIndex
+                            ? "bg-accent text-accent-foreground"
+                            : undefined
+                        }
+                        onSelect={() => chooseCommand(command)}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                      >
+                        <Icon />
+                        <span>{command.label}</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuGroup>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+            No matching blocks
           </div>
-        );
-      }) : <div className="px-2 py-1.5 text-sm text-muted-foreground">No matching blocks</div>}
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
