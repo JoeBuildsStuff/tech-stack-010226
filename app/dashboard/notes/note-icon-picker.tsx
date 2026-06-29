@@ -30,13 +30,13 @@ export function NoteIconPicker({
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          size="sm"
-          variant="outline"
           type="button"
+          variant="ghost"
           disabled={isUpdating}
           aria-label="Select note icon"
+          className="mb-1 flex size-[4.5rem] items-center justify-center rounded-lg p-0 text-foreground hover:bg-accent/60"
         >
-          <activeIconOption.Icon className="size-4" />
+          <activeIconOption.Icon className="size-10 stroke-[1.25]" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-fit rounded-xl p-2" align="start">

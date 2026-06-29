@@ -125,12 +125,13 @@ export default function CommandSearch({
   const searchValue = controlledSearchValue ?? internalSearchValue;
   const setSearchValue = onSearchValueChange ?? setInternalSearchValue;
 
-  // Detect Mac for keyboard shortcut display
-  const isMac = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return (
+  // Detect Mac after mount to avoid SSR/client hydration mismatch
+  const [isMac, setIsMac] = useState(false);
+
+  useEffect(() => {
+    setIsMac(
       navigator.platform.toUpperCase().indexOf("MAC") >= 0 ||
-      /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
+        /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
     );
   }, []);
 

@@ -29,10 +29,12 @@ export type PanelSuggestion = {
 
 type UseDocumentSuggestionsOptions = {
   documentId?: string;
+  suggesting?: boolean;
 };
 
 export function useDocumentSuggestions({
   documentId,
+  suggesting = false,
 }: UseDocumentSuggestionsOptions) {
   const supabase = useMemo(() => createClient(), []);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,7 +42,6 @@ export function useDocumentSuggestions({
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [suggesting, setSuggesting] = useState(false);
   const [docSuggestions, setDocSuggestions] = useState<DocumentSuggestion[]>([]);
   const [records, setRecords] = useState<SuggestionRecord[]>([]);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState<
@@ -449,8 +450,6 @@ export function useDocumentSuggestions({
     setEditor,
     trackChangesExtension,
     handleEditorUpdate,
-    suggesting,
-    setSuggesting,
     currentUserId,
     initials,
     isLoadingSuggestions,

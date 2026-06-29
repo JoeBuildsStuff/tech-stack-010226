@@ -1,18 +1,6 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
-import {
-  Code,
-  Heading1,
-  Heading2,
-  Heading3,
-  Grid2x2,
-  List,
-  ListOrdered,
-  Minus,
-  TextQuote,
-  Type,
-} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DropdownMenu,
@@ -22,102 +10,29 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-type CommandGroup = "Text" | "List" | "Layout";
-
-type SlashCommand = {
-  label: string;
-  description: string;
-  icon: typeof Type;
-  group: CommandGroup;
-  run: (editor: Editor) => void;
-};
-
-const COMMANDS: SlashCommand[] = [
-  {
-    label: "Text",
-    description: "Plain paragraph",
-    icon: Type,
-    group: "Text",
-    run: (editor) => editor.chain().focus().setParagraph().run(),
-  },
-  {
-    label: "Large heading",
-    description: "Heading 1",
-    icon: Heading1,
-    group: "Text",
-    run: (editor) => editor.chain().focus().setHeading({ level: 1 }).run(),
-  },
-  {
-    label: "Medium heading",
-    description: "Heading 2",
-    icon: Heading2,
-    group: "Text",
-    run: (editor) => editor.chain().focus().setHeading({ level: 2 }).run(),
-  },
-  {
-    label: "Small heading",
-    description: "Heading 3",
-    icon: Heading3,
-    group: "Text",
-    run: (editor) => editor.chain().focus().setHeading({ level: 3 }).run(),
-  },
-  {
-    label: "Block quote",
-    description: "Add a quote block",
-    icon: TextQuote,
-    group: "Text",
-    run: (editor) => editor.chain().focus().toggleBlockquote().run(),
-  },
-  {
-    label: "Code block",
-    description: "Add a code block",
-    icon: Code,
-    group: "Text",
-    run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
-  },
-  {
-    label: "Bullet list",
-    description: "Create a bulleted list",
-    icon: List,
-    group: "List",
-    run: (editor) => editor.chain().focus().toggleBulletList().run(),
-  },
-  {
-    label: "Ordered list",
-    description: "Create a numbered list",
-    icon: ListOrdered,
-    group: "List",
-    run: (editor) => editor.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    label: "Table",
-    description: "Insert a table",
-    icon: Grid2x2,
-    group: "Layout",
-    run: (editor) =>
-      editor
-        .chain()
-        .focus()
-        .insertTable({ rows: 2, cols: 2, withHeaderRow: true })
-        .run(),
-  },
-  {
-    label: "Divider",
-    description: "Insert a horizontal rule",
-    icon: Minus,
-    group: "Layout",
-    run: (editor) => editor.chain().focus().setHorizontalRule().run(),
-  },
-];
-
-const COMMAND_GROUPS: CommandGroup[] = ["Text", "List", "Layout"];
+import type { SlashCommand } from "@/components/tiptap/features/types";
 
 type MenuState = { from: number; query: string; left: number; top: number };
 
-export function SlashCommandMenu({ editor }: { editor: Editor }) {
+export function SlashCommandMenu({
+  editor,
+  commands,
+}: {
+  editor: Editor;
+  commands: SlashCommand[];
+}) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const groups = useMemo(() => {
+    const seen: string[] = [];
+    for (const command of commands) {
+      if (!seen.includes(command.group)) {
+        seen.push(command.group);
+      }
+    }
+    return seen;
+  }, [commands]);
 
   const updateMenu = useCallback(() => {
     const { $from, empty } = editor.state.selection;
@@ -130,7 +45,7 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
       0,
       $from.parentOffset,
       undefined,
-      "\ufffc"
+      "￼"
     );
     const currentLine = textBeforeCursor.slice(
       textBeforeCursor.lastIndexOf("\n") + 1
@@ -151,12 +66,12 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
 
   const filteredCommands = useMemo(
     () =>
-      COMMANDS.filter((command) =>
+      commands.filter((command) =>
         `${command.label} ${command.description}`
           .toLowerCase()
           .includes(menu?.query ?? "")
       ),
-    [menu?.query]
+    [commands, menu?.query]
   );
 
   const chooseCommand = useCallback(
@@ -212,7 +127,7 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
       editor.view.dom.removeEventListener("keydown", handleKeyDown, true);
   }, [chooseCommand, editor, filteredCommands, menu, selectedIndex]);
 
-  if (!menu) return null;
+  if (!menu || !commands.length) return null;
 
   const activeIndex = Math.min(
     selectedIndex,
@@ -243,11 +158,11 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {filteredCommands.length ? (
-          COMMAND_GROUPS.map((group) => {
-            const commands = filteredCommands.filter(
+          groups.map((group) => {
+            const groupCommands = filteredCommands.filter(
               (command) => command.group === group
             );
-            if (!commands.length) return null;
+            if (!groupCommands.length) return null;
 
             return (
               <div key={group}>
@@ -255,12 +170,12 @@ export function SlashCommandMenu({ editor }: { editor: Editor }) {
                   {group}
                 </DropdownMenuLabel>
                 <DropdownMenuGroup>
-                  {commands.map((command) => {
+                  {groupCommands.map((command) => {
                     const index = filteredCommands.indexOf(command);
                     const Icon = command.icon;
                     return (
                       <DropdownMenuItem
-                        key={command.label}
+                        key={command.id}
                         className={
                           index === activeIndex
                             ? "bg-accent text-accent-foreground"

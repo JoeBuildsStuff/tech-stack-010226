@@ -1,16 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FileDiff, Heart, MessageSquare, Trash } from "lucide-react";
+import { EditorContent } from "@tiptap/react";
 
-import Tiptap from "@/components/tiptap/tiptap";
 import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { normalizeNoteIconName, type NoteIconName } from "@/lib/note-icons";
 import { createClient } from "@/lib/supabase/client";
-import { Heart, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import { Input } from "@/components/ui/input";
+import { CopyButton } from "@/components/ui/copy-button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { useRichTextEditor } from "@/components/tiptap/use-rich-text-editor";
+import { notesPreset } from "@/components/tiptap/features/presets";
+import BubbleMenuComponent from "@/components/tiptap/bubble-menu";
+import { SlashCommandMenu } from "@/components/tiptap/slash-command-menu";
+import { TableHoverControls } from "@/components/tiptap/table-hover-controls";
+import {
+  EditorComposer,
+  EditorReviewPanel,
+} from "@/components/tiptap/editor-review";
 import {
   deleteNoteAction,
   setNoteFavoriteAction,
@@ -26,9 +38,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { NoteIconPicker } from "./note-icon-picker";
+
+// Notion-style document column styling. Layout/typography lives here in the
+// page (the editor library stays presentation-agnostic).
+const DOCUMENT_EDITOR_CLASSNAME =
+  "relative notion-editor prose prose-lg dark:prose-invert max-w-none [&_.ProseMirror]:min-h-[50vh] [&_.ProseMirror]:outline-none [&_.ProseMirror_h1]:text-3xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h2]:mt-8 [&_.ProseMirror_h2]:mb-2 [&_.ProseMirror_h2]:text-2xl [&_.ProseMirror_h2]:font-semibold [&_.ProseMirror_h3]:mt-6 [&_.ProseMirror_h3]:mb-1 [&_.ProseMirror_h3]:text-xl [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_p]:my-1 [&_.ProseMirror_ul]:my-2 [&_.ProseMirror_ol]:my-2";
 
 type NotesEditorClientProps = {
   noteId: string;
@@ -57,6 +73,8 @@ export function NotesEditorClient({
   const [isUpdatingIcon, setIsUpdatingIcon] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [saveState, setSaveState] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -202,91 +220,218 @@ export function NotesEditorClient({
     };
   }, []);
 
-  return (
-    <div className="relative flex h-full min-h-0 flex-col gap-2 overflow-hidden">
-      <ButtonGroup className="flex w-full">
-        <NoteIconPicker
-          iconName={iconName}
-          isUpdating={isUpdatingIcon}
-          onSelect={handleIconSelect}
+  const core = useRichTextEditor({
+    features: notesPreset,
+    context: { documentId: noteId },
+    content,
+    onChange: handleChange,
+    showReview,
+    onShowReviewChange: setShowReview,
+    suggesting,
+    onSuggestingChange: setSuggesting,
+  });
+  const {
+    editor,
+    editorContentRef,
+    reviewEnabled,
+    commentSelectionHandler,
+    enabledFeatures,
+  } = core;
+
+  const saveStatusLabel = useMemo(() => {
+    if (isDeleting) {
+      return "Deleting…";
+    }
+    if (deleteError) {
+      return deleteError;
+    }
+    if (saveState === "saving") {
+      return "Saving…";
+    }
+    if (saveState === "saved") {
+      return "Saved";
+    }
+    if (saveState === "error") {
+      return "Save failed";
+    }
+    return null;
+  }, [deleteError, isDeleting, saveState]);
+
+  const pageHeader = (
+    <>
+      <div className="absolute right-0 top-4 flex items-center gap-1">
+        <CopyButton
+          textToCopy={content}
+          size="icon-sm"
+          variant="ghost"
+          showTooltip
+          tooltipText="Copy note content"
+          tooltipCopiedText="Copied!"
+          successMessage="Content copied to clipboard"
+          className="size-8 p-0 text-muted-foreground hover:text-foreground"
         />
-        <Input
-          size="sm"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={handleTitleBlur}
-          placeholder="Untitled"
-          aria-label="Note title"
-        />
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              type="button"
-              disabled={isDeleting}
-              aria-label="Delete note"
-            >
-              <Trash className="size-4" />
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete note</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={isDeleting}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void handleDelete();
-                }}
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
         <Button
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-label={
+            suggesting ? "Turn off suggesting mode" : "Turn on suggesting mode"
+          }
+          aria-pressed={suggesting}
+          className={cn(suggesting && "bg-accent text-accent-foreground")}
+          onClick={() => setSuggesting((current) => !current)}
+        >
+          <FileDiff className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-label={showReview ? "Hide comments" : "Show comments"}
+          aria-pressed={showReview}
+          className={cn(showReview && "bg-accent text-accent-foreground")}
+          onClick={() => setShowReview((current) => !current)}
+        >
+          <MessageSquare className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           type="button"
           disabled={isUpdatingFavorite}
           aria-label={isFavorite ? "Unfavorite note" : "Favorite note"}
+          aria-pressed={isFavorite}
+          className={cn(isFavorite && "bg-accent text-accent-foreground")}
           onClick={() => {
             void handleToggleFavorite();
           }}
         >
           <Heart
-            className={`size-4 ${isFavorite ? "fill-current text-primary-background" : ""}`}
+            className={cn(
+              "size-4",
+              isFavorite && "fill-current text-primary-background"
+            )}
           />
         </Button>
-      </ButtonGroup>
-
-      <div className="absolute bottom-2 left-2 px-1 text-xs text-muted-foreground z-10">
-        {isDeleting ? "Deleting…" : null}
-        {deleteError ? deleteError : null}
-        {saveState === "saving" ? "Saving…" : null}
-        {saveState === "saved" ? "Saved" : null}
-        {saveState === "error" ? "Save failed" : null}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          disabled={isDeleting}
+          aria-label="Delete note"
+          onClick={() => setDeleteDialogOpen(true)}
+        >
+          <Trash className="size-4" />
+        </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <Tiptap
-          content={content}
-          onChange={handleChange}
-          commentsDocumentId={noteId}
-          redlineDocumentId={noteId}
-          enableFileNodes
-        />
-      </div>
+      <NoteIconPicker
+        iconName={iconName}
+        isUpdating={isUpdatingIcon}
+        onSelect={handleIconSelect}
+      />
+
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        onBlur={handleTitleBlur}
+        placeholder="Untitled"
+        aria-label="Note title"
+        className="mb-1 w-full border-0 bg-transparent text-4xl font-bold leading-tight tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
+      />
+
+      {saveStatusLabel ? (
+        <p className="mb-4 min-h-4 text-xs text-muted-foreground">
+          {saveStatusLabel}
+        </p>
+      ) : (
+        <div className="mb-4 min-h-4" />
+      )}
+    </>
+  );
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete note</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {editor ? (
+        <div
+          className={
+            reviewEnabled
+              ? `flex h-full min-h-0 ${core.effectiveShowReview ? "gap-1" : "gap-0"}`
+              : "h-full min-h-0"
+          }
+        >
+          <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <TooltipProvider>
+              <BubbleMenuComponent
+                editor={editor}
+                enabled={enabledFeatures}
+                {...(commentSelectionHandler
+                  ? { onRequestCommentFromSelection: commentSelectionHandler }
+                  : {})}
+              />
+
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="group relative mx-auto w-full max-w-[720px] px-6 pb-24 pt-16">
+                  {pageHeader}
+                  <div ref={editorContentRef} className={DOCUMENT_EDITOR_CLASSNAME}>
+                    <EditorContent
+                      editor={editor}
+                      className="[&_a:hover]:cursor-pointer"
+                    />
+                    <TableHoverControls
+                      editor={editor}
+                      containerRef={editorContentRef}
+                    />
+                  </div>
+                </div>
+              </ScrollArea>
+
+              <SlashCommandMenu editor={editor} commands={core.slashCommands} />
+            </TooltipProvider>
+
+            <EditorComposer core={core} />
+          </div>
+
+          {reviewEnabled ? (
+            <EditorReviewPanel core={core} editor={editor} />
+          ) : null}
+        </div>
+      ) : (
+        <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="mx-auto w-full max-w-[720px] px-6 pb-24 pt-16">
+            {pageHeader}
+            <div className={DOCUMENT_EDITOR_CLASSNAME}>
+              <Skeleton className="mb-4 h-6 w-1/3" />
+              <Skeleton className="mb-2 h-4 w-full" />
+              <Skeleton className="mb-2 h-4 w-3/4" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -39,6 +39,12 @@ import TableButton from "./table-button";
 
 interface BubbleMenuProps {
   editor: Editor;
+  /**
+   * Enabled feature ids. Each control renders only when its feature is on, so a
+   * partial bubble menu is this exact menu with some items hidden — never a
+   * restyle. Defaults to everything on (the full menu).
+   */
+  enabled?: Set<string>;
   onRequestCommentFromSelection?: (payload: {
     anchorFrom: number;
     anchorTo: number;
@@ -52,8 +58,13 @@ interface BubbleMenuProps {
   }) => void;
 }
 
+const ALL_ON = {
+  has: () => true,
+} as unknown as Set<string>;
+
 const BubbleMenuComponent = ({
   editor,
+  enabled = ALL_ON,
   onRequestCommentFromSelection,
 }: BubbleMenuProps) => {
   const editorState = useEditorState({
@@ -75,6 +86,17 @@ const BubbleMenuComponent = ({
       isAlignRight: state.editor.isActive({ textAlign: "right" }),
     }),
   });
+
+  const has = (id: string) => enabled.has(id);
+  const showHeadings = has("headings");
+  const showLists = has("lists");
+  const showCodeBlock = has("codeBlock");
+  const showBlockGroup = showHeadings || showLists || showCodeBlock;
+  const showAlign = has("align");
+  const showBasic = has("basicMarks");
+  const showUnderline = has("underline");
+  const showLink = has("link");
+  const showTable = has("table");
 
   const handleSetTextAlign = (alignment: "left" | "center" | "right") => {
     const chain = editor.chain().focus() as unknown as {
@@ -139,241 +161,267 @@ const BubbleMenuComponent = ({
       }}
     >
       <div className="flex flex-row gap-0.5 border rounded-xl border-border bg-background p-1">
-        <Tooltip>
-          <TooltipTrigger>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="text-xs" variant="secondary">
-                  {editorState.isHeading1 && <Heading1 className="" />}
-                  {editorState.isHeading2 && <Heading2 className="" />}
-                  {editorState.isHeading3 && <Heading3 className="" />}
-                  {editorState.isOrderedList && <ListOrdered className="" />}
-                  {editorState.isBulletList && <List className="" />}
-                  {editorState.isCodeBlock && <Code className="" />}
-                  {!editorState.isHeading1 &&
-                    !editorState.isHeading2 &&
-                    !editorState.isHeading3 &&
-                    !editorState.isOrderedList &&
-                    !editorState.isBulletList &&
-                    !editorState.isCodeBlock && <Type className="" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                portalled={false}
-                align="start"
-                side="bottom"
-                sideOffset={10}
-                className="text-xs w-48 bg-background"
-              >
-                <DropdownMenuItem
-                  onClick={() => editor.chain().setParagraph().focus().run()}
+        {showBlockGroup && (
+          <Tooltip>
+            <TooltipTrigger>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="text-xs" variant="secondary">
+                    {editorState.isHeading1 && <Heading1 className="" />}
+                    {editorState.isHeading2 && <Heading2 className="" />}
+                    {editorState.isHeading3 && <Heading3 className="" />}
+                    {editorState.isOrderedList && <ListOrdered className="" />}
+                    {editorState.isBulletList && <List className="" />}
+                    {editorState.isCodeBlock && <Code className="" />}
+                    {!editorState.isHeading1 &&
+                      !editorState.isHeading2 &&
+                      !editorState.isHeading3 &&
+                      !editorState.isOrderedList &&
+                      !editorState.isBulletList &&
+                      !editorState.isCodeBlock && <Type className="" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  portalled={false}
+                  align="start"
+                  side="bottom"
+                  sideOffset={10}
+                  className="text-xs w-48 bg-background"
                 >
-                  <Type className="" />
-                  <span className="text-xs">Text</span>
-                  <DropdownMenuShortcut>⌘ ⌥ 0</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    editor.chain().toggleHeading({ level: 1 }).focus().run()
-                  }
-                >
-                  <Heading1 className="" />
-                  <span className="text-xs">Heading 1</span>
-                  <DropdownMenuShortcut>⌘ ⌥ 1</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    editor.chain().toggleHeading({ level: 2 }).focus().run()
-                  }
-                >
-                  <Heading2 className="" />
-                  <span className="text-xs">Heading 2</span>
-                  <DropdownMenuShortcut>⌘ ⌥ 2</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    editor.chain().toggleHeading({ level: 3 }).focus().run()
-                  }
-                >
-                  <Heading3 className="" />
-                  <span className="text-xs">Heading 3</span>
-                  <DropdownMenuShortcut>⌘ ⌥ 3</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    editor.chain().toggleOrderedList().focus().run()
-                  }
-                >
-                  <ListOrdered className="" />
-                  <span className="text-xs">Ordered list</span>
-                  <DropdownMenuShortcut>⌘ ⇧ 7</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    editor.chain().toggleBulletList().focus().run()
-                  }
-                >
-                  <List className="" />
-                  <span className="text-xs">Bullet list</span>
-                  <DropdownMenuShortcut>⌘ ⇧ 8</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-                >
-                  <Code className="" />
-                  <span className="text-xs">Code block</span>
-                  <DropdownMenuShortcut>⌘ ⌥ C</DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Block type</p>
-          </TooltipContent>
-        </Tooltip>
+                  <DropdownMenuItem
+                    onClick={() => editor.chain().setParagraph().focus().run()}
+                  >
+                    <Type className="" />
+                    <span className="text-xs">Text</span>
+                    <DropdownMenuShortcut>⌘ ⌥ 0</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  {showHeadings && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          editor.chain().toggleHeading({ level: 1 }).focus().run()
+                        }
+                      >
+                        <Heading1 className="" />
+                        <span className="text-xs">Heading 1</span>
+                        <DropdownMenuShortcut>⌘ ⌥ 1</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          editor.chain().toggleHeading({ level: 2 }).focus().run()
+                        }
+                      >
+                        <Heading2 className="" />
+                        <span className="text-xs">Heading 2</span>
+                        <DropdownMenuShortcut>⌘ ⌥ 2</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          editor.chain().toggleHeading({ level: 3 }).focus().run()
+                        }
+                      >
+                        <Heading3 className="" />
+                        <span className="text-xs">Heading 3</span>
+                        <DropdownMenuShortcut>⌘ ⌥ 3</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {showLists && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          editor.chain().toggleOrderedList().focus().run()
+                        }
+                      >
+                        <ListOrdered className="" />
+                        <span className="text-xs">Ordered list</span>
+                        <DropdownMenuShortcut>⌘ ⇧ 7</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          editor.chain().toggleBulletList().focus().run()
+                        }
+                      >
+                        <List className="" />
+                        <span className="text-xs">Bullet list</span>
+                        <DropdownMenuShortcut>⌘ ⇧ 8</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {showCodeBlock && (
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+                    >
+                      <Code className="" />
+                      <span className="text-xs">Code block</span>
+                      <DropdownMenuShortcut>⌘ ⌥ C</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Block type</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
-        <Tooltip>
-          <TooltipTrigger>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="text-xs" variant="secondary">
-                  {editorState.isAlignLeft && <AlignLeft className="" />}
-                  {editorState.isAlignCenter && <AlignCenter className="" />}
-                  {editorState.isAlignRight && <AlignRight className="" />}
-                  {!editorState.isAlignLeft &&
-                    !editorState.isAlignCenter &&
-                    !editorState.isAlignRight && <AlignLeft className="" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                portalled={false}
-                align="start"
-                side="bottom"
-                sideOffset={10}
-                className="text-xs w-40 bg-background"
-              >
-                <DropdownMenuItem
-                  onClick={() => {
-                    handleSetTextAlign("left");
-                  }}
+        {showAlign && (
+          <Tooltip>
+            <TooltipTrigger>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="text-xs" variant="secondary">
+                    {editorState.isAlignLeft && <AlignLeft className="" />}
+                    {editorState.isAlignCenter && <AlignCenter className="" />}
+                    {editorState.isAlignRight && <AlignRight className="" />}
+                    {!editorState.isAlignLeft &&
+                      !editorState.isAlignCenter &&
+                      !editorState.isAlignRight && <AlignLeft className="" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  portalled={false}
+                  align="start"
+                  side="bottom"
+                  sideOffset={10}
+                  className="text-xs w-40 bg-background"
                 >
-                  <AlignLeft className="" />
-                  <span className="text-xs">Left</span>
-                  <DropdownMenuShortcut>⌘ ⇧ L</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    handleSetTextAlign("center");
-                  }}
-                >
-                  <AlignCenter className="" />
-                  <span className="text-xs">Center</span>
-                  <DropdownMenuShortcut>⌘ ⇧ E</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    handleSetTextAlign("right");
-                  }}
-                >
-                  <AlignRight className="" />
-                  <span className="text-xs">Right</span>
-                  <DropdownMenuShortcut>⌘ ⇧ R</DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Text alignment</p>
-          </TooltipContent>
-        </Tooltip>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      handleSetTextAlign("left");
+                    }}
+                  >
+                    <AlignLeft className="" />
+                    <span className="text-xs">Left</span>
+                    <DropdownMenuShortcut>⌘ ⇧ L</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      handleSetTextAlign("center");
+                    }}
+                  >
+                    <AlignCenter className="" />
+                    <span className="text-xs">Center</span>
+                    <DropdownMenuShortcut>⌘ ⇧ E</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      handleSetTextAlign("right");
+                    }}
+                  >
+                    <AlignRight className="" />
+                    <span className="text-xs">Right</span>
+                    <DropdownMenuShortcut>⌘ ⇧ R</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Text alignment</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
-        <Tooltip>
-          <TooltipTrigger>
-            <Toggle
-              onClick={() => editor.chain().toggleBold().focus().run()}
-              pressed={editorState.isBold}
-              size="sm"
-              className="text-xs"
-            >
-              <Bold className="" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>
-              Bold <span className="ml-2">⌘B</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger>
-            <Toggle
-              onClick={() => editor.chain().toggleItalic().focus().run()}
-              pressed={editorState.isItalic}
-              size="sm"
-              className="text-xs"
-            >
-              <Italic className="" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>
-              Italic <span className="ml-2">⌘I</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger>
-            <Toggle
-              onClick={() => editor.chain().toggleStrike().focus().run()}
-              pressed={editorState.isStrike}
-              size="sm"
-              className="text-xs"
-            >
-              <Strikethrough className="" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>
-              Strikethrough <span className="ml-2">⌘⇧X</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger>
-            <Toggle
-              onClick={() => editor.chain().toggleUnderline().focus().run()}
-              pressed={editorState.isUnderline}
-              size="sm"
-              className="text-xs"
-            >
-              <Underline className="" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>
-              Underline <span className="ml-2">⌘U</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger>
-            <Toggle
-              onClick={() => editor.chain().toggleCode().focus().run()}
-              pressed={editorState.isCode}
-              size="sm"
-              className="text-xs"
-            >
-              <Code className="" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>
-              Inline code <span className="ml-2">⌘E</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-        <LinkButton editor={editor} size="sm" className="text-xs" />
-        <TableButton editor={editor} size="sm" className="text-xs" />
+        {showBasic && (
+          <>
+            <Tooltip>
+              <TooltipTrigger>
+                <Toggle
+                  onClick={() => editor.chain().toggleBold().focus().run()}
+                  pressed={editorState.isBold}
+                  size="sm"
+                  className="text-xs"
+                >
+                  <Bold className="" />
+                </Toggle>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Bold <span className="ml-2">⌘B</span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger>
+                <Toggle
+                  onClick={() => editor.chain().toggleItalic().focus().run()}
+                  pressed={editorState.isItalic}
+                  size="sm"
+                  className="text-xs"
+                >
+                  <Italic className="" />
+                </Toggle>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Italic <span className="ml-2">⌘I</span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger>
+                <Toggle
+                  onClick={() => editor.chain().toggleStrike().focus().run()}
+                  pressed={editorState.isStrike}
+                  size="sm"
+                  className="text-xs"
+                >
+                  <Strikethrough className="" />
+                </Toggle>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Strikethrough <span className="ml-2">⌘⇧X</span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
+        {showUnderline && (
+          <Tooltip>
+            <TooltipTrigger>
+              <Toggle
+                onClick={() => editor.chain().toggleUnderline().focus().run()}
+                pressed={editorState.isUnderline}
+                size="sm"
+                className="text-xs"
+              >
+                <Underline className="" />
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>
+                Underline <span className="ml-2">⌘U</span>
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {showBasic && (
+          <Tooltip>
+            <TooltipTrigger>
+              <Toggle
+                onClick={() => editor.chain().toggleCode().focus().run()}
+                pressed={editorState.isCode}
+                size="sm"
+                className="text-xs"
+              >
+                <Code className="" />
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>
+                Inline code <span className="ml-2">⌘E</span>
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {showLink && (
+          <LinkButton editor={editor} size="sm" className="text-xs" />
+        )}
+        {showTable && (
+          <TableButton editor={editor} size="sm" className="text-xs" />
+        )}
         {onRequestCommentFromSelection ? (
           <Tooltip>
             <TooltipTrigger asChild>
