@@ -4,6 +4,7 @@ import type { Editor } from "@tiptap/react";
 
 import { ReviewPanel } from "@/components/tiptap/review-panel";
 import { CommentComposerPopover } from "@/components/tiptap/comment-composer-popover";
+import { isDocumentLevelThread } from "@/components/tiptap/comment-thread-types";
 import type { RichTextEditorCore } from "@/components/tiptap/use-rich-text-editor";
 
 /**
@@ -19,6 +20,7 @@ export function EditorReviewPanel({
 }) {
   const {
     comments,
+    commentsEnabled,
     suggestions,
     effectiveShowReview,
     setEffectiveShowReview,
@@ -42,6 +44,24 @@ export function EditorReviewPanel({
         currentUserAvatarUrl={comments.currentUserAvatarUrl}
         filters={reviewFilters}
         onFiltersChange={setReviewFilters}
+        onAddDocumentComment={
+          commentsEnabled
+            ? (target) => {
+                const rect = target.getBoundingClientRect();
+                comments.handleOpenComposer({
+                  anchorFrom: 1,
+                  anchorTo: 1,
+                  anchorExact: "",
+                  anchorPrefix: "",
+                  anchorSuffix: "",
+                  position: {
+                    top: rect.bottom + 8,
+                    left: rect.left + rect.width / 2,
+                  },
+                });
+              }
+            : undefined
+        }
         onClose={() => setEffectiveShowReview(false)}
         selectedThreadId={comments.selectedThreadId}
         replyContent={comments.replyContent}
@@ -50,8 +70,11 @@ export function EditorReviewPanel({
           suggestions.setSelectedSuggestionId(null);
           editor.commands.selectSuggestion(null);
           comments.setSelectedThreadId(threadId);
+          const thread = comments.threads.find((item) => item.id === threadId);
           editor.commands.selectCommentThread(threadId);
-          editor.commands.focusCommentThread(threadId);
+          if (thread && !isDocumentLevelThread(thread)) {
+            editor.commands.focusCommentThread(threadId);
+          }
         }}
         onHoverThread={(threadId) =>
           editor.commands.hoverCommentThread(threadId)

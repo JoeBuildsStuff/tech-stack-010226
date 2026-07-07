@@ -150,6 +150,10 @@ export const CommentAnchors = Extension.create<{
             return false
           }
 
+          if (range.from === range.to) {
+            return true
+          }
+
           const selection = TextSelection.create(editor.state.doc, range.from, range.to)
           tr.setSelection(selection)
           tr.scrollIntoView()
@@ -193,6 +197,10 @@ export const CommentAnchors = Extension.create<{
 
             if (tr.docChanged && nextState.threads.length > 0) {
               const mappedThreads = nextState.threads.map((thread: CommentAnchorThread) => {
+                if (thread.anchorTo === thread.anchorFrom) {
+                  return thread
+                }
+
                 const mappedFrom = tr.mapping.map(thread.anchorFrom, -1)
                 const mappedTo = tr.mapping.map(thread.anchorTo, 1)
                 return clampAnchor(

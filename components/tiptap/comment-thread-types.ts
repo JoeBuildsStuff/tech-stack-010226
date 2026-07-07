@@ -27,3 +27,11 @@ export type ThreadVisibilityFilters = {
   open: boolean;
   resolved: boolean;
 };
+
+/** Document-level threads use a zero-width anchor (`anchorFrom === anchorTo`). */
+export function isDocumentLevelThread(thread: {
+  anchorFrom: number;
+  anchorTo: number;
+}): boolean {
+  return thread.anchorTo === thread.anchorFrom;
+}

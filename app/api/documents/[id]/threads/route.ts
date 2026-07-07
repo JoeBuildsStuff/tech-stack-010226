@@ -25,8 +25,8 @@ const createThreadSchema = z
     anchorSuffix: z.string().default(""),
     content: z.string().trim().min(1).max(10000),
   })
-  .refine((value) => value.anchorTo > value.anchorFrom, {
-    message: "Selection is required",
+  .refine((value) => value.anchorTo >= value.anchorFrom, {
+    message: "Invalid anchor range",
     path: ["anchorTo"],
   });
 

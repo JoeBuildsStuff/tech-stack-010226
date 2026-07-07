@@ -12,6 +12,7 @@ import {
   type FeatureContext,
 } from "@/components/tiptap/features";
 import { useDocumentComments } from "@/components/tiptap/use-document-comments";
+import { isDocumentLevelThread } from "@/components/tiptap/comment-thread-types";
 import { useDocumentSuggestions } from "@/components/tiptap/use-document-suggestions";
 import { InsertionMark, DeletionMark } from "@/components/tiptap/redline-marks";
 import { deleteFile } from "@/components/tiptap/supabase-file-manager";
@@ -214,7 +215,7 @@ export function useRichTextEditor(options: UseRichTextEditorOptions) {
               .map((thread) => ({
                 type: "comment" as const,
                 id: thread.id,
-                position: thread.anchorFrom,
+                position: isDocumentLevelThread(thread) ? 0 : thread.anchorFrom,
                 thread,
               }))
           : []),

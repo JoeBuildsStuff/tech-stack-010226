@@ -711,7 +711,7 @@ export async function executeNotesUpdateNote(
 export const notesAddCommentTool: Anthropic.Tool = {
   name: 'notes_add_comment',
   description:
-    'Create a new comment thread on a note. This starts a top-level comment (not a reply).',
+    'Create a new comment thread on a note. This starts a top-level comment (not a reply). Without anchorText, the comment attaches to the document (no text highlight).',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -725,7 +725,8 @@ export const notesAddCommentTool: Anthropic.Tool = {
       },
       anchorText: {
         type: 'string',
-        description: 'Optional explicit anchor text to attach the thread to.',
+        description:
+          'Optional text to attach the thread to. When omitted, the comment is document-level with no highlight.',
       },
     },
     required: ['noteId', 'content'],
@@ -758,19 +759,41 @@ export async function executeNotesAddComment(
     }
 
     const plainNote = stripHtml(note.content ?? '')
-    const anchorFrom = 1
-    const inferredAnchorText = asString(parameters.anchorText) ?? plainNote.slice(0, 120)
-    const safeAnchorText = inferredAnchorText || 'Note comment'
-    const anchorTo = Math.max(2, Math.min(anchorFrom + safeAnchorText.length, plainNote.length + 1 || 2))
-    const anchorPrefix = ''
-    const anchorSuffix = plainNote.slice(Math.max(0, anchorTo - 1), Math.max(0, anchorTo - 1 + 48))
+    const anchorText = asString(parameters.anchorText)
+
+    let anchorFrom: number
+    let anchorTo: number
+    let anchorExact: string
+    let anchorPrefix: string
+    let anchorSuffix: string
+
+    if (anchorText) {
+      anchorFrom = 1
+      const safeAnchorText = anchorText
+      anchorTo = Math.max(
+        2,
+        Math.min(anchorFrom + safeAnchorText.length, plainNote.length + 1 || 2),
+      )
+      anchorExact = safeAnchorText
+      anchorPrefix = ''
+      anchorSuffix = plainNote.slice(
+        Math.max(0, anchorTo - 1),
+        Math.max(0, anchorTo - 1 + 48),
+      )
+    } else {
+      anchorFrom = 1
+      anchorTo = 1
+      anchorExact = ''
+      anchorPrefix = ''
+      anchorSuffix = ''
+    }
 
     const thread = await createThread({
       documentId: noteId,
       userId: auth.userId,
       anchorFrom,
       anchorTo,
-      anchorExact: safeAnchorText,
+      anchorExact,
       anchorPrefix,
       anchorSuffix,
       content,

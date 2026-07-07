@@ -194,7 +194,7 @@ export async function createThread(input: {
   anchorSuffix: string
   content: string
 }): Promise<ThreadRecord> {
-  if (input.anchorTo <= input.anchorFrom) {
+  if (input.anchorTo < input.anchorFrom) {
     throw new Error("Invalid anchor range")
   }
   if (stripRichText(input.content).length === 0) {

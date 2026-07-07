@@ -14,6 +14,7 @@ import type {
   Thread,
   ThreadVisibilityFilters,
 } from "@/components/tiptap/comment-thread-types";
+import { isDocumentLevelThread } from "@/components/tiptap/comment-thread-types";
 import type { CommentSelectionPayload } from "@/components/tiptap/types";
 
 function clampPopoverLeft(left: number, width: number) {
@@ -110,7 +111,9 @@ export function useDocumentComments({
       return;
     }
 
-    const mapped = getCommentThreadAnchors(editor);
+    const mapped = getCommentThreadAnchors(editor).filter(
+      (anchor) => anchor.anchorTo > anchor.anchorFrom
+    );
     if (mapped.length === 0) {
       return;
     }
@@ -474,12 +477,14 @@ export function useDocumentComments({
     );
 
     editor.commands.setCommentThreads(
-      visibleThreads.map((thread) => ({
-        id: thread.id,
-        anchorFrom: thread.anchorFrom,
-        anchorTo: thread.anchorTo,
-        status: thread.status,
-      }))
+      visibleThreads
+        .filter((thread) => !isDocumentLevelThread(thread))
+        .map((thread) => ({
+          id: thread.id,
+          anchorFrom: thread.anchorFrom,
+          anchorTo: thread.anchorTo,
+          status: thread.status,
+        }))
     );
 
     const serialized = JSON.stringify(
@@ -497,9 +502,16 @@ export function useDocumentComments({
       return;
     }
 
+    const selectedThread = threads.find((thread) => thread.id === selectedThreadId);
+    if (!selectedThread) {
+      return;
+    }
+
     editor.commands.selectCommentThread(selectedThreadId);
-    editor.commands.focusCommentThread(selectedThreadId);
-  }, [editor, selectedThreadId]);
+    if (!isDocumentLevelThread(selectedThread)) {
+      editor.commands.focusCommentThread(selectedThreadId);
+    }
+  }, [editor, selectedThreadId, threads]);
 
   useEffect(() => {
     if (

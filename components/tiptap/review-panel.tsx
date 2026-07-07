@@ -6,6 +6,7 @@ import {
   Check,
   MessageSquareDashed,
   MoreVertical,
+  Plus,
   Square,
   SquareCheckBig,
   SquarePen,
@@ -37,6 +38,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { isRichTextContentEmpty } from "@/components/tiptap/comment-content-utils";
+import { isDocumentLevelThread } from "@/components/tiptap/comment-thread-types";
 import { CommentInputEditor } from "@/components/tiptap/comment-input-editor";
 import type { SuggestionKind } from "@/components/tiptap/suggestion-types";
 import type {
@@ -119,6 +121,7 @@ type ReviewPanelProps = {
   onFiltersChange: (
     updater: ReviewFilters | ((prev: ReviewFilters) => ReviewFilters)
   ) => void;
+  onAddDocumentComment?: (target: HTMLElement) => void;
   onClose: () => void;
 
   // Comment threads
@@ -164,6 +167,7 @@ export function ReviewPanel({
   currentUserAvatarUrl,
   filters,
   onFiltersChange,
+  onAddDocumentComment,
   onClose,
   selectedThreadId,
   replyContent,
@@ -394,6 +398,7 @@ export function ReviewPanel({
       firstComment?.createdAt ?? thread.createdAt
     );
     const replies = thread.comments.slice(1);
+    const isDocumentComment = isDocumentLevelThread(thread);
     const replyCountLabel = `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`;
     const isEditingFirstComment = Boolean(
       firstComment &&
@@ -440,6 +445,7 @@ export function ReviewPanel({
                 <p className="truncate text-sm font-semibold">{authorName}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {createdAt}
+                  {isDocumentComment ? " · Document" : null}
                 </p>
               </div>
             </div>
@@ -741,6 +747,18 @@ export function ReviewPanel({
         <div className="flex h-full items-center justify-between">
           <h2 className="text-sm font-semibold">Review</h2>
           <ButtonGroup>
+            {onAddDocumentComment ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                aria-label="Add document comment"
+                className="size-7 p-0"
+                onClick={(event) => onAddDocumentComment(event.currentTarget)}
+              >
+                <Plus className="size-4" />
+              </Button>
+            ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
