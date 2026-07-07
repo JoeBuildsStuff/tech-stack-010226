@@ -1,22 +1,25 @@
 interface LowMediumHighIconProps {
-  level?: 1 | 2 | 3; // Made level optional
+  level?: 0 | 1 | 2 | 3 | 4;
 }
 
 export const LowMediumHighIcon: React.FC<LowMediumHighIconProps> = ({
   level = 1,
 }) => {
-  // Default to 1
+  const bars = [1, 2, 3, 4] as const;
+
   return (
     <div className="flex items-end gap-0.5 ">
-      <div
-        className={`w-1 h-1 rounded-xs ${level >= 1 ? "bg-muted-foreground" : "bg-transparent border border-muted-foreground"}`}
-      />
-      <div
-        className={`w-1 h-2 rounded-xs ${level >= 2 ? "bg-muted-foreground" : "bg-transparent border border-muted-foreground"}`}
-      />
-      <div
-        className={`w-1 h-3 rounded-xs ${level >= 3 ? "bg-muted-foreground" : "bg-transparent border border-muted-foreground"}`}
-      />
+      {bars.map((bar) => (
+        <div
+          key={bar}
+          className={`w-1 rounded-xs ${
+            level >= bar
+              ? "bg-muted-foreground"
+              : "bg-transparent border border-muted-foreground"
+          }`}
+          style={{ height: `${bar * 0.25}rem` }}
+        />
+      ))}
     </div>
   );
 };

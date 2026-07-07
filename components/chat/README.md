@@ -33,52 +33,62 @@ The chat system is built with a layered architecture:
 ## Core Components
 
 ### 1. Chat Provider (`chat-provider.tsx`)
+
 The main context provider that wraps the entire chat system.
 
 **Key Features:**
+
 - Provides chat context to all child components
 - Maps Zustand store to React context
 - Handles session management and UI state
 
 **Usage:**
+
 ```tsx
-import { ChatProvider } from '@/components/chat'
+import { ChatProvider } from "@/components/chat";
 
 function App() {
   return (
     <ChatProvider>
       <YourApp />
     </ChatProvider>
-  )
+  );
 }
 ```
 
 ### 2. Chat Bubble (`chat-bubble.tsx`)
+
 The floating chat button that appears when the chat is closed or minimized.
 
 **Features:**
+
 - Floating action button with hover effects
 - Minimized state with close button
 - Smooth transitions and animations
 - Positioned to avoid overlap with maximized chat
 
 ### 3. Chat Panel (`chat-panel.tsx`)
+
 The main chat interface container.
 
 **States:**
+
 - **Floating**: Normal floating panel (384px width)
 - **Maximized**: Takes up right side of layout
 - **Minimized**: Hidden, shows only bubble
 
 **Layout Modes:**
+
 - `floating`: Standard floating panel
 - `inset`: Integrated into layout (maximized)
 - `fullpage`: Full page dedicated chat interface
 
 ### 4. Chat Full Page (`chat-fullpage.tsx`)
+
 A dedicated full-page chat interface for focused conversations.
 
 **Features:**
+
 - Full viewport height and width
 - Toggle group for switching between layout modes
 - Centered content with max-width constraint
@@ -86,19 +96,23 @@ A dedicated full-page chat interface for focused conversations.
 - Same functionality as regular chat panel
 
 **Layout Mode Toggle:**
+
 - **Floating Mode**: `PictureInPicture2` icon - Returns to floating panel
 - **Inset Mode**: `PanelRight` icon - Returns to inset layout
 - **Full Page Mode**: `LaptopMinimal` icon - Current mode (refresh)
 
 **Navigation:**
+
 - Accessible via `/workspace/chat/[session-id]` route
 - Automatic session switching and layout mode setting
 - Seamless integration with existing chat store
 
 ### 5. Chat Header (`chat-header.tsx`)
+
 The top bar of the chat panel with navigation and controls.
 
 **Features:**
+
 - Session title editing
 - Chat history navigation
 - Layout mode switching (floating, inset, fullpage)
@@ -107,31 +121,38 @@ The top bar of the chat panel with navigation and controls.
 - Full page navigation option
 
 ### 6. Chat Messages List (`chat-messages-list.tsx`)
+
 Displays the conversation history with auto-scrolling.
 
 **Features:**
+
 - Auto-scroll to bottom on new messages
 - Loading state with spinner
 - Empty state with call-to-action
 - Smooth scrolling animations
 
 ### 7. Chat Message (`chat-message.tsx`)
+
 Individual message component with different styles for user/assistant/system.
 
 **Message Types:**
+
 - **User**: Right-aligned, primary color
 - **Assistant**: Left-aligned, muted background
 - **System**: Centered, italic, smaller text
 
 **Features:**
+
 - Timestamp display
 - Suggested actions as buttons
 - Loading placeholder component
 
 ### 8. Chat Input (`chat-input.tsx`)
+
 The message input area with auto-resize and send functionality.
 
 **Features:**
+
 - Auto-resizing textarea
 - Enter to send (Shift+Enter for new line)
 - Loading state during API calls
@@ -141,6 +162,7 @@ The message input area with auto-resize and send functionality.
 - **Conditional padding** based on layout mode (p-0 for fullpage, p-2 for others)
 
 **File Attachments:**
+
 - Click paperclip icon to select files
 - Supports multiple file types (images, documents, audio, video)
 - Shows file name, type, and size
@@ -149,26 +171,30 @@ The message input area with auto-resize and send functionality.
 - Attachment information is included in the AI prompt
 
 **Attachment Interface:**
+
 ```typescript
 interface Attachment {
-  id: string
-  file: File
-  name: string
-  size: number
-  type: string
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
 }
 ```
 
 **Usage:**
+
 ```tsx
 // Files are automatically handled when sent
-await sendMessage("Analyze this document", attachments)
+await sendMessage("Analyze this document", attachments);
 ```
 
 ### 9. Chat History (`chat-history.tsx`)
+
 Session management interface showing all chat sessions.
 
 **Features:**
+
 - List of all chat sessions
 - Session deletion with confirmation
 - Session switching
@@ -178,31 +204,34 @@ Session management interface showing all chat sessions.
 ## State Management
 
 ### Chat Store (`lib/chat/chat-store.ts`)
+
 Built with Zustand for efficient state management and persistence.
 
 **Key State:**
+
 ```typescript
 interface ChatStore {
   // Session management
-  sessions: ChatSession[]
-  currentSessionId: string | null
-  currentSession: ChatSession | null
-  messages: ChatMessage[]
-  
+  sessions: ChatSession[];
+  currentSessionId: string | null;
+  currentSession: ChatSession | null;
+  messages: ChatMessage[];
+
   // UI State
-  isOpen: boolean
-  isMinimized: boolean
-  isMaximized: boolean
-  isLoading: boolean
-  showHistory: boolean
-  layoutMode: 'floating' | 'inset' | 'fullpage'
-  
+  isOpen: boolean;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  isLoading: boolean;
+  showHistory: boolean;
+  layoutMode: "floating" | "inset" | "fullpage";
+
   // Context
-  currentContext: PageContext | null
+  currentContext: PageContext | null;
 }
 ```
 
 **Persistence:**
+
 - Stores last 10 sessions
 - Keeps last 50 messages per session
 - Serializes dates for localStorage compatibility
@@ -210,45 +239,53 @@ interface ChatStore {
 ## Hooks
 
 ### useChat (`hooks/use-chat.tsx`)
+
 Main hook for chat functionality with API integration.
 
 **Key Methods:**
+
 - `sendMessage(content)`: Send message to API
 - `handleActionClick(action)`: Execute suggested actions
 - `updatePageContext(context)`: Update current page context
 
 **API Integration:**
+
 - Sends messages to provider-specific chat routes, including `/api/chat/anthropic`
 - Includes conversation history and page context
 - Handles loading states and errors
 
 ### usePageContext (`hooks/use-page-context.tsx`)
+
 Extracts page context from URL search parameters and data.
 
 **Context Extraction:**
+
 - Parses filters, sorting, and pagination from URL
 - Creates data summary for AI context
 - Provides helper methods for context description
 
 **Usage with Tables:**
+
 ```tsx
-import { TableWithPageContext } from '@/components/chat'
+import { TableWithPageContext } from "@/components/chat";
 
 function DataTable() {
   return (
     <TableWithPageContext data={data} count={totalCount}>
       <YourTableComponent />
     </TableWithPageContext>
-  )
+  );
 }
 ```
 
 ## API Integration
 
 ### Chat API Route (`app/api/chat/anthropic/route.ts`)
+
 Handles chat requests with Anthropic Claude integration.
 
 **Request Format:**
+
 ```typescript
 {
   message: string
@@ -264,6 +301,7 @@ Handles chat requests with Anthropic Claude integration.
 ```
 
 **File Upload Support:**
+
 - Uses `FormData` for multipart requests
 - Supports multiple file attachments
 - Files are processed and included in AI prompt
@@ -271,6 +309,7 @@ Handles chat requests with Anthropic Claude integration.
 - Backward compatible with JSON-only requests
 
 **Response Format:**
+
 ```typescript
 {
   message: string
@@ -279,6 +318,7 @@ Handles chat requests with Anthropic Claude integration.
 ```
 
 **Context-Aware Prompts:**
+
 - Includes current filters and sorting
 - Provides data sample for context
 - Maintains conversation history
@@ -287,9 +327,11 @@ Handles chat requests with Anthropic Claude integration.
 ## Types and Interfaces
 
 ### Core Types (`types/chat.ts`)
+
 Defines all TypeScript interfaces for the chat system.
 
 **Key Types:**
+
 - `ChatMessage`: Individual message with role and content
 - `ChatAction`: Suggested action with type and payload
 - `PageContext`: Current page state (filters, data, etc.)
@@ -297,9 +339,11 @@ Defines all TypeScript interfaces for the chat system.
 - `ChatContextValue`: React context interface
 
 ### Constants (`lib/chat/constants.ts`)
+
 Configuration and constants for the chat system.
 
 **Categories:**
+
 - Chat configuration (timeouts, limits)
 - UI dimensions and styling
 - Message roles and action types
@@ -309,14 +353,17 @@ Configuration and constants for the chat system.
 ## Full Page Chat Mode
 
 ### Route-Based Chat Sessions
+
 The chat system supports dedicated full-page sessions accessible via URL routing.
 
 **Route Structure:**
+
 ```
 /workspace/chat/[session-id]
 ```
 
 **Features:**
+
 - Direct access to specific chat sessions
 - Full viewport utilization for focused conversations
 - Toggle group for switching between layout modes
@@ -324,29 +371,31 @@ The chat system supports dedicated full-page sessions accessible via URL routing
 - Seamless navigation back to workspace
 
 **Implementation:**
+
 ```tsx
 // Page component: app/(workspace)/workspace/chat/[id]/page.tsx
 export default function ChatPage() {
-  const params = useParams()
-  const chatId = params.id as string
-  const { switchToSession, setLayoutMode } = useChatStore()
+  const params = useParams();
+  const chatId = params.id as string;
+  const { switchToSession, setLayoutMode } = useChatStore();
 
   useEffect(() => {
     if (chatId) {
-      switchToSession(chatId)
-      setLayoutMode('fullpage')
+      switchToSession(chatId);
+      setLayoutMode("fullpage");
     }
-  }, [chatId, switchToSession, setLayoutMode])
+  }, [chatId, switchToSession, setLayoutMode]);
 
   return (
     <ChatProvider>
       <ChatFullPage />
     </ChatProvider>
-  )
+  );
 }
 ```
 
 **Navigation Methods:**
+
 1. **From Chat Header**: Layout dropdown → "Full Page" option
 2. **Direct URL**: Navigate to `/workspace/chat/[session-id]`
 3. **Programmatic**: `router.push('/workspace/chat/' + sessionId)`
@@ -354,14 +403,17 @@ export default function ChatPage() {
 ## Integration with Data Tables
 
 ### TableWithPageContext Component
+
 Wrapper component that provides page context to the chat system.
 
 **How it works:**
+
 1. Extracts context from table data and URL parameters
 2. Updates chat context when data changes
 3. Enables AI to understand current data view
 
 **Usage:**
+
 ```tsx
 <TableWithPageContext data={tableData} count={totalCount}>
   <DataTable />
@@ -381,6 +433,7 @@ Wrapper component that provides page context to the chat system.
 The AI can suggest four types of actions:
 
 ### 1. Filter Actions
+
 ```typescript
 {
   type: 'filter',
@@ -394,6 +447,7 @@ The AI can suggest four types of actions:
 ```
 
 ### 2. Sort Actions
+
 ```typescript
 {
   type: 'sort',
@@ -406,6 +460,7 @@ The AI can suggest four types of actions:
 ```
 
 ### 3. Navigation Actions
+
 ```typescript
 {
   type: 'navigate',
@@ -418,6 +473,7 @@ The AI can suggest four types of actions:
 ```
 
 ### 4. Create Actions
+
 ```typescript
 {
   type: 'create',
@@ -432,6 +488,7 @@ The AI can suggest four types of actions:
 ## Styling and Theming
 
 The chat system uses:
+
 - **Tailwind CSS** for styling
 - **CSS Variables** for theming
 - **Smooth transitions** for state changes
@@ -482,7 +539,7 @@ The chat system uses:
 - Test all chat states (open, minimized, maximized)
 - Verify context extraction from different pages
 - Test action execution and navigation
-- Validate persistence across page reloads 
+- Validate persistence across page reloads
 
 ## Infrastructure Overview
 
@@ -509,7 +566,7 @@ The hook centralizes chat behavior and integrates UI, storage, and APIs.
   - Chooses provider based on `model`:
     - Anthropic: `POST /api/chat/anthropic`
     - Cerebras: `POST /api/chat/cerebras` (e.g., models like `gpt-oss-120b-*`)
-    - OpenAI: `POST /api/chat/openai` (e.g., models like `gpt-5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`)
+    - OpenAI: `POST /api/chat/openai` (e.g., models like `gpt-5.5`, `gpt-5.4`, `gpt-5`, `gpt-5.4-mini`, `gpt-5.4-nano`)
   - Sends last 10 messages for context, plus optional `reasoning_effort` and client timezone metadata.
   - Persists assistant reply with `addChatMessage`, then writes tool calls (`addChatToolCalls`) and suggested actions (`addChatSuggestedActions`) when present.
   - Refreshes messages from DB (`getChatMessages`) and updates the store via `setMessagesForSession` to replace optimistic entries.
@@ -517,10 +574,12 @@ The hook centralizes chat behavior and integrates UI, storage, and APIs.
 - Provides context helpers and summary (filter/sort/visible counts) based on `PageContext`.
 
 Attachments serving:
+
 - Image URLs are signed via `GET /api/images/serve?path=...`.
 - File URLs are signed via `GET /api/files/serve?path=...`.
 
 Note on hooks:
+
 - There are two `useChat` exports:
   - `src/components/chat/chat-provider.tsx` exports a lightweight `useChat` bound to the context provider.
   - `src/hooks/use-chat.tsx` exports the feature-rich hook described here. Prefer importing from `@/hooks/use-chat` when integrating chat logic.
@@ -562,7 +621,7 @@ These wrap Supabase access and enforce RLS-safe operations.
   - `setActiveVariant({ sessionId, userMessageId, activeIndex, signature?, signatures? })`
   - `getBranchState(sessionId)`
 
-### API Routes: src/app/api/chat/*
+### API Routes: src/app/api/chat/\*
 
 - `POST /api/chat/anthropic` Anthropic backend with support for returning:
   - `message`, optional `actions`, optional `toolCalls`, optional `citations`, optional `reasoning`.
@@ -590,6 +649,7 @@ All tables live under schema `ai_transcriber` with RLS enabled.
   - `id`, `session_id`, `user_message_id`, `active_index`, `signature`, `signatures text[]`, `updated_at`.
 
 Storage buckets
+
 - Images: `chat-images` (agnostic tech stack)
 - Files: `chat-files` (agnostic tech stack)
 

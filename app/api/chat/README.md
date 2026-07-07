@@ -5,18 +5,21 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 ## Available Endpoints
 
 ### 1. Anthropic Chat API (`/api/chat/anthropic`)
+
 - **Provider**: Anthropic (Claude models)
-- **Models**: Haiku 4.5, Sonnet 4.6, Opus 4.6
+- **Models**: Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5
 - **Features**: Function calling, web search, file attachments, context awareness
 - **File**: `anthropic/route.ts`
 
 ### 2. OpenAI Chat API (`/api/chat/openai`)
+
 - **Provider**: OpenAI
-- **Models**: GPT-5, GPT-5.4, GPT-5.4 Mini, GPT-5.4 Nano
+- **Models**: GPT-5.5, GPT-5.4, GPT-5, GPT-5.4 Mini, GPT-5.4 Nano
 - **Features**: Function calling, Firecrawl web search, file attachments, context awareness
 - **File**: `openai/route.ts`
 
 ### 3. Cerebras Chat API (`/api/chat/cerebras`)
+
 - **Provider**: Cerebras
 - **Models**: GPT-OSS-120B
 - **Features**: Function calling, reasoning effort control, file attachments
@@ -26,20 +29,24 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 
 Users can select from different AI models in the chat interface:
 
-- **Anthropic Models**: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`
-- **OpenAI Models**: `gpt-5.4`, `gpt-5`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- **Anthropic Models**: `claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`
+- **OpenAI Models**: `gpt-5.5`, `gpt-5.4`, `gpt-5`, `gpt-5.4-mini`, `gpt-5.4-nano`
 - **Cerebras Models**: `gpt-oss-120b`
 
 ## Reasoning Effort Control
 
 Some models support configurable reasoning effort levels:
+
+- **None**: No additional reasoning effort
 - **Low**: Fastest response, minimal reasoning
 - **Medium**: Balanced speed and reasoning (default)
 - **High**: Maximum reasoning, best quality
+- **XHigh**: Maximum available OpenAI reasoning effort
 
 Currently supported by:
-- Cerebras GPT-OSS-120B
-- OpenAI GPT-5 models
+
+- Cerebras GPT-OSS-120B (`low`, `medium`, `high`)
+- OpenAI GPT-5 models (`none`, `low`, `medium`, `high`, `xhigh`)
 
 ## Function Calling
 
@@ -48,6 +55,7 @@ All endpoints share the same tool system. Add project-specific tools in `tools/`
 ## File Attachments
 
 All endpoints support file uploads:
+
 - **Images**: Processed for content extraction
 - **Documents**: Converted to text descriptions
 - **Audio/Video**: Metadata extraction
@@ -90,6 +98,7 @@ The chat interface automatically routes requests to the appropriate API based on
 ## Development
 
 To add a new AI provider:
+
 1. Create a new directory under `src/app/api/chat/`
 2. Implement the route with the same interface
 3. Add model options to the chat input component

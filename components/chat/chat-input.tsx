@@ -12,7 +12,10 @@ import { AttachmentGroup } from "@/components/ui/attachment";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -38,36 +41,99 @@ const MODEL_OPTIONS = [
   {
     value: "claude-haiku-4-5",
     label: "Haiku 4.5",
-    menuLabel: "Haiku 4.5 ($1 / $5)",
+    cost: "$1 / $5",
+    provider: "Anthropic",
   },
   {
-    value: "claude-sonnet-4-6",
-    label: "Sonnet 4.6",
-    menuLabel: "Sonnet 4.6 ($3 / $15)",
+    value: "claude-sonnet-5",
+    label: "Sonnet 5",
+    cost: "$2 / $10",
+    provider: "Anthropic",
   },
   {
-    value: "claude-opus-4-6",
-    label: "Opus 4.6",
-    menuLabel: "Opus 4.6 ($5 / $25)",
+    value: "claude-opus-4-8",
+    label: "Opus 4.8",
+    cost: "$5 / $25",
+    provider: "Anthropic",
+  },
+  {
+    value: "claude-fable-5",
+    label: "Fable 5",
+    cost: "$10 / $50",
+    provider: "Anthropic",
   },
   {
     value: "gpt-oss-120b",
     label: "GPT-OSS-120B",
-    menuLabel: "GPT-OSS-120B",
+    cost: null,
+    provider: "Cerebras",
   },
-  { value: "gpt-5.4", label: "GPT-5.4", menuLabel: "GPT-5.4 ($2.50 / $15)" },
-  { value: "gpt-5", label: "GPT-5", menuLabel: "GPT-5 ($1.25 / $10)" },
+  { value: "gpt-5.5", label: "GPT-5.5", cost: "$5 / $30", provider: "OpenAI" },
+  {
+    value: "gpt-5.4",
+    label: "GPT-5.4",
+    cost: "$2.50 / $15",
+    provider: "OpenAI",
+  },
+  { value: "gpt-5", label: "GPT-5", cost: "$1.25 / $10", provider: "OpenAI" },
   {
     value: "gpt-5.4-mini",
     label: "GPT-5.4 Mini",
-    menuLabel: "GPT-5.4 Mini ($0.75 / $4.50)",
+    cost: "$0.75 / $4.50",
+    provider: "OpenAI",
   },
   {
     value: "gpt-5.4-nano",
     label: "GPT-5.4 Nano",
-    menuLabel: "GPT-5.4 Nano ($0.20 / $1.25)",
+    cost: "$0.20 / $1.25",
+    provider: "OpenAI",
   },
 ] as const;
+
+const MODEL_GROUPS = [
+  {
+    provider: "Anthropic",
+    options: [
+      "claude-fable-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-haiku-4-5",
+    ],
+  },
+  {
+    provider: "OpenAI",
+    options: ["gpt-5.5", "gpt-5.4", "gpt-5", "gpt-5.4-mini", "gpt-5.4-nano"],
+  },
+  {
+    provider: "Cerebras",
+    options: ["gpt-oss-120b"],
+  },
+] as const;
+
+const MODEL_OPTIONS_BY_VALUE = new Map(
+  MODEL_OPTIONS.map((option) => [option.value, option])
+);
+
+type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+
+const OPENAI_REASONING_OPTIONS: Array<{
+  value: ReasoningEffort;
+  label: string;
+  level: 0 | 1 | 2 | 3 | 4;
+}> = [
+  { value: "none", label: "None", level: 0 },
+  { value: "low", label: "Low", level: 1 },
+  { value: "medium", label: "Medium", level: 2 },
+  { value: "high", label: "High", level: 3 },
+  { value: "xhigh", label: "XHigh", level: 4 },
+];
+
+const CEREBRAS_REASONING_OPTIONS = OPENAI_REASONING_OPTIONS.filter(
+  (option) =>
+    option.value === "low" ||
+    option.value === "medium" ||
+    option.value === "high"
+);
 
 export function ChatInput() {
   const [input, setInput] = useState("");
@@ -79,14 +145,29 @@ export function ChatInput() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, stopMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
-  const [selectedModel, setSelectedModel] = useState("gpt-5");
+  const [selectedModel, setSelectedModel] = useState("gpt-5.5");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
-  const [reasoningEffort, setReasoningEffort] = useState<
-    "low" | "medium" | "high"
-  >("low");
+  const [reasoningEffort, setReasoningEffort] =
+    useState<ReasoningEffort>("low");
+  const isCerebrasModel = selectedModel.startsWith("gpt-oss-120b");
+  const isOpenAIModel = selectedModel.startsWith("gpt-5");
+  const reasoningOptions = isOpenAIModel
+    ? OPENAI_REASONING_OPTIONS
+    : CEREBRAS_REASONING_OPTIONS;
   const selectedModelLabel =
     MODEL_OPTIONS.find((option) => option.value === selectedModel)?.label ??
     "Model";
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+
+    if (
+      model.startsWith("gpt-oss-120b") &&
+      (reasoningEffort === "none" || reasoningEffort === "xhigh")
+    ) {
+      setReasoningEffort("low");
+    }
+  };
 
   const handleSend = async () => {
     const trimmedInput = input.trim();
@@ -105,9 +186,6 @@ export function ChatInput() {
 
     try {
       // Determine which API to use based on model selection
-      const isCerebrasModel = selectedModel.startsWith("gpt-oss-120b");
-      const isOpenAIModel = selectedModel.startsWith("gpt-5");
-
       if (isCerebrasModel || isOpenAIModel) {
         // Use Cerebras or OpenAI API with reasoning effort
         await sendMessage(
@@ -352,7 +430,7 @@ export function ChatInput() {
             <div className="flex gap-2 items-center">
               <Select
                 value={selectedModel}
-                onValueChange={setSelectedModel}
+                onValueChange={handleModelChange}
                 disabled={isLoading}
               >
                 <SelectTrigger
@@ -363,26 +441,53 @@ export function ChatInput() {
                     {selectedModelLabel}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
-                  {MODEL_OPTIONS.map((option) => (
-                    <SelectItem
-                      key={option.value}
-                      value={option.value}
-                      className="font-light text-xs"
-                    >
-                      {option.menuLabel}
-                    </SelectItem>
+                <SelectContent
+                  position="popper"
+                  side="top"
+                  align="end"
+                  sideOffset={8}
+                  className="w-72 font-light text-xs"
+                >
+                  {MODEL_GROUPS.map((group, groupIndex) => (
+                    <SelectGroup key={group.provider}>
+                      {groupIndex > 0 && <SelectSeparator />}
+                      <SelectLabel className="px-2 py-1 text-[11px] font-medium uppercase tracking-normal">
+                        {group.provider}
+                      </SelectLabel>
+                      {group.options.map((value) => {
+                        const option = MODEL_OPTIONS_BY_VALUE.get(value);
+
+                        if (!option) return null;
+
+                        return (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            indicatorPosition="left"
+                            className="font-light text-xs"
+                          >
+                            <span className="flex w-full items-center justify-between gap-4">
+                              <span>{option.label}</span>
+                              {option.cost && (
+                                <span className="shrink-0 text-muted-foreground">
+                                  {option.cost}
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
 
               {/* Reasoning Effort Selector (show for Cerebras and OpenAI models) */}
-              {(selectedModel.startsWith("gpt-oss-120b") ||
-                selectedModel.startsWith("gpt-5")) && (
+              {(isCerebrasModel || isOpenAIModel) && (
                 <Select
                   value={reasoningEffort}
-                  onValueChange={(value: "low" | "medium" | "high") =>
-                    setReasoningEffort(value)
+                  onValueChange={(value) =>
+                    setReasoningEffort(value as ReasoningEffort)
                   }
                   disabled={isLoading}
                 >
@@ -392,17 +497,23 @@ export function ChatInput() {
                   >
                     <SelectValue placeholder="Reasoning" />
                   </SelectTrigger>
-                  <SelectContent className="font-light text-xs">
-                    <SelectItem value="low" className="font-light text-xs">
-                      <LowMediumHighIcon level={1} /> Low
-                    </SelectItem>
-                    <SelectItem value="medium" className="font-light text-xs">
-                      <LowMediumHighIcon level={2} /> Medium
-                    </SelectItem>
-                    <SelectItem value="high" className="font-light text-xs">
-                      <LowMediumHighIcon level={3} />
-                      High
-                    </SelectItem>
+                  <SelectContent
+                    position="popper"
+                    side="top"
+                    align="end"
+                    sideOffset={8}
+                    className="font-light text-xs"
+                  >
+                    {reasoningOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        className="font-light text-xs"
+                      >
+                        <LowMediumHighIcon level={option.level} />
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
