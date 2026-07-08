@@ -99,7 +99,7 @@ export function AnthropicSidebar() {
             <SidebarMenuButton className="group" asChild>
               <Link href="/dashboard/anthropic/new">
                 <div className="rounded-full bg-[#D97757] p-0.5">
-                  <Plus className="size-4" />
+                  <Plus className="size-4 text-white" />
                 </div>
 
                 <span>New Chat</span>
@@ -182,7 +182,7 @@ export function AnthropicSidebar() {
         variant="inset"
         collapsible={isMobile ? "offcanvas" : "none"}
         className={cn(
-          "bg-[#262624]",
+          "bg-[#FAF9F5] dark:bg-[#262624]",
           isMobile
             ? ""
             : cn(
@@ -196,7 +196,7 @@ export function AnthropicSidebar() {
         ) : (
           <div
             className={cn(
-              "flex flex-col h-full w-72 transition-opacity duration-200 ease-linear overflow-hidden bg-[#262624] border-r",
+              "flex flex-col h-full w-72 transition-opacity duration-200 ease-linear overflow-hidden bg-[#FAF9F5] dark:bg-[#262624] border-r",
               open ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
           >

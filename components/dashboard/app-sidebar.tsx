@@ -13,12 +13,57 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { File, Plus, Table2 } from "lucide-react";
+import { File, Plus, Table2, type LucideIcon } from "lucide-react";
 import { SidebarLogo } from "@/components/dashboard/app-sidebar-logo";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { AuthButton } from "@/components/auth-button";
+
+type NavigationItem = {
+  label: string;
+  href: string;
+  icon?: LucideIcon;
+  logo?: {
+    light: string;
+    dark: string;
+    imageClassName?: string;
+  };
+  action?: () => void;
+  actionAriaLabel?: string;
+};
+
+function NavLogo({
+  light,
+  dark,
+  alt,
+  imageClassName = "size-4",
+}: {
+  light: string;
+  dark: string;
+  alt: string;
+  imageClassName?: string;
+}) {
+  return (
+    <span className="relative mr-2 flex size-4 shrink-0 items-center justify-center overflow-visible">
+      <Image
+        src={light}
+        alt={alt}
+        width={24}
+        height={24}
+        className={cn(imageClassName, "dark:hidden")}
+      />
+      <Image
+        src={dark}
+        alt={alt}
+        width={24}
+        height={24}
+        className={cn("hidden dark:block", imageClassName)}
+      />
+    </span>
+  );
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -35,7 +80,7 @@ export function AppSidebar() {
     console.log("Create OpenAI chat clicked");
   };
 
-  const navigationItems = [
+  const navigationItems: NavigationItem[] = [
     {
       label: "Notes",
       href: "/dashboard/notes",
@@ -53,10 +98,18 @@ export function AppSidebar() {
     {
       label: "OpenAI",
       href: "/dashboard/openai",
+      logo: {
+        light: "/openai/SVGs/OAI_OpenAI-Blossom_Black.svg",
+        dark: "/openai/SVGs/OAI_OpenAI-Blossom_White.svg",
+      },
     },
     {
       label: "Anthropic",
       href: "/dashboard/anthropic",
+      logo: {
+        light: "/anthropic/Claude_Symbol_4.svg",
+        dark: "/anthropic/Claude_Symbol_2.svg",
+      },
     },
   ];
 
@@ -84,9 +137,16 @@ export function AppSidebar() {
                       )}
                     >
                       <Link href={item.href}>
-                        {item.icon && (
+                        {item.icon ? (
                           <item.icon className="size-3.5 mr-2 flex-none text-muted-foreground" />
-                        )}
+                        ) : item.logo ? (
+                          <NavLogo
+                            light={item.logo.light}
+                            dark={item.logo.dark}
+                            alt={`${item.label} logo`}
+                            imageClassName={item.logo.imageClassName}
+                          />
+                        ) : null}
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
