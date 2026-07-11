@@ -599,7 +599,7 @@ async function getOpenAIResponse({
       signal?.throwIfAborted();
       const response = await openai.responses.create(
         {
-          model: model || "gpt-5.5",
+          model: model || "gpt-5.6-terra",
           instructions: systemPrompt,
           input: nextInput,
           previous_response_id: previousResponseId,
@@ -740,7 +740,7 @@ function streamOpenAIResponse({
           signal?.throwIfAborted();
           const stream = await openai.responses.create(
             {
-              model: model || "gpt-5.5",
+              model: model || "gpt-5.6-terra",
               instructions: systemPrompt,
               input: nextInput,
               previous_response_id: previousResponseId,

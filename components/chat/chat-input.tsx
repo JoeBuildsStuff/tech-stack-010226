@@ -19,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LowMediumHighIcon } from "@/components/icons/low-medium-high";
 import {
   Tooltip,
   TooltipContent,
@@ -68,14 +67,24 @@ const MODEL_OPTIONS = [
     cost: null,
     provider: "Cerebras",
   },
-  { value: "gpt-5.5", label: "GPT-5.5", cost: "$5 / $30", provider: "OpenAI" },
   {
-    value: "gpt-5.4",
-    label: "GPT-5.4",
+    value: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol",
+    cost: "$5 / $30",
+    provider: "OpenAI",
+  },
+  {
+    value: "gpt-5.6-terra",
+    label: "GPT-5.6 Terra",
     cost: "$2.50 / $15",
     provider: "OpenAI",
   },
-  { value: "gpt-5", label: "GPT-5", cost: "$1.25 / $10", provider: "OpenAI" },
+  {
+    value: "gpt-5.6-luna",
+    label: "GPT-5.6 Luna",
+    cost: "$1 / $6",
+    provider: "OpenAI",
+  },
   {
     value: "gpt-5.4-mini",
     label: "GPT-5.4 Mini",
@@ -102,7 +111,13 @@ const MODEL_GROUPS = [
   },
   {
     provider: "OpenAI",
-    options: ["gpt-5.5", "gpt-5.4", "gpt-5", "gpt-5.4-mini", "gpt-5.4-nano"],
+    options: [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.4-mini",
+      "gpt-5.4-nano",
+    ],
   },
   {
     provider: "Cerebras",
@@ -119,13 +134,12 @@ type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 const OPENAI_REASONING_OPTIONS: Array<{
   value: ReasoningEffort;
   label: string;
-  level: 0 | 1 | 2 | 3 | 4;
 }> = [
-  { value: "none", label: "None", level: 0 },
-  { value: "low", label: "Low", level: 1 },
-  { value: "medium", label: "Medium", level: 2 },
-  { value: "high", label: "High", level: 3 },
-  { value: "xhigh", label: "XHigh", level: 4 },
+  { value: "none", label: "None" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
 ];
 
 const CEREBRAS_REASONING_OPTIONS = OPENAI_REASONING_OPTIONS.filter(
@@ -145,7 +159,7 @@ export function ChatInput() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, stopMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
-  const [selectedModel, setSelectedModel] = useState("gpt-5.5");
+  const [selectedModel, setSelectedModel] = useState("gpt-5.6-terra");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffort>("low");
@@ -510,7 +524,6 @@ export function ChatInput() {
                         value={option.value}
                         className="font-light text-xs"
                       >
-                        <LowMediumHighIcon level={option.level} />
                         {option.label}
                       </SelectItem>
                     ))}
