@@ -684,6 +684,7 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
           // Determine which API to use based on model selection
           const isCerebrasModel = model?.startsWith("gpt-oss-120b");
           const isOpenAIModel = model?.startsWith("gpt-5");
+          const isXAIModel = model?.startsWith("grok-");
 
           if (isCerebrasModel) {
             // Use Cerebras API
@@ -841,8 +842,12 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
               }
             }
             await refreshMessages(sid);
-          } else if (isOpenAIModel) {
-            // Use OpenAI API
+          } else if (isOpenAIModel || isXAIModel) {
+            // Use OpenAI or xAI Responses API
+            const providerLabel = isXAIModel ? "xAI" : "OpenAI";
+            const providerEndpoint = isXAIModel
+              ? "/api/chat/xai"
+              : "/api/chat/openai";
             const openaiFormData = new FormData();
             openaiFormData.append("message", content);
             openaiFormData.append("context", JSON.stringify(currentContext));
@@ -921,14 +926,14 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
                   ?.id || null;
             }
 
-            const response = await fetch("/api/chat/openai", {
+            const response = await fetch(providerEndpoint, {
               method: "POST",
               body: openaiFormData,
               signal,
             });
 
             if (!response.ok) {
-              throw new Error(`OpenAI API error: ${response.status}`);
+              throw new Error(`${providerLabel} API error: ${response.status}`);
             }
 
             const result = await readChatStream(

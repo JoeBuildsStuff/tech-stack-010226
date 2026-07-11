@@ -25,12 +25,20 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 - **Features**: Function calling, reasoning effort control, file attachments
 - **File**: `cerebras/route.ts`
 
+### 4. xAI Chat API (`/api/chat/xai`)
+
+- **Provider**: xAI (Grok)
+- **Models**: Grok 4.5
+- **Features**: Function calling, reasoning effort control (`low`/`medium`/`high`), file attachments, Firecrawl web search
+- **File**: `xai/route.ts`
+
 ## Model Selection
 
 Users can select from different AI models in the chat interface:
 
 - **Anthropic Models**: `claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`
 - **OpenAI Models**: `gpt-5.5`, `gpt-5.4`, `gpt-5`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- **xAI Models**: `grok-4.5`
 - **Cerebras Models**: `gpt-oss-120b`
 
 ## Reasoning Effort Control
@@ -47,6 +55,7 @@ Currently supported by:
 
 - Cerebras GPT-OSS-120B (`low`, `medium`, `high`)
 - OpenAI GPT-5 models (`none`, `low`, `medium`, `high`, `xhigh`)
+- xAI Grok 4.5 (`low`, `medium`, `high`; defaults to `high`)
 
 ## Function Calling
 
@@ -71,6 +80,9 @@ OPENAI_API_KEY=your_openai_api_key
 
 # Required for Cerebras
 CEREBRAS_API_KEY=your_cerebras_api_key
+
+# Required for xAI (Grok)
+XAI_API_KEY=your_xai_api_key
 
 # Optional shared web search and scraping for every provider
 FIRECRAWL_API_KEY=fc-your_firecrawl_api_key

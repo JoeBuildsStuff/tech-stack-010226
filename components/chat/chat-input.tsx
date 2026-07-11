@@ -97,6 +97,12 @@ const MODEL_OPTIONS = [
     cost: "$0.20 / $1.25",
     provider: "OpenAI",
   },
+  {
+    value: "grok-4.5",
+    label: "Grok 4.5",
+    cost: "$2 / $6",
+    provider: "xAI",
+  },
 ] as const;
 
 const MODEL_GROUPS = [
@@ -118,6 +124,10 @@ const MODEL_GROUPS = [
       "gpt-5.4-mini",
       "gpt-5.4-nano",
     ],
+  },
+  {
+    provider: "xAI",
+    options: ["grok-4.5"],
   },
   {
     provider: "Cerebras",
@@ -149,6 +159,8 @@ const CEREBRAS_REASONING_OPTIONS = OPENAI_REASONING_OPTIONS.filter(
     option.value === "high"
 );
 
+const XAI_REASONING_OPTIONS = CEREBRAS_REASONING_OPTIONS;
+
 export function ChatInput() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -165,9 +177,12 @@ export function ChatInput() {
     useState<ReasoningEffort>("low");
   const isCerebrasModel = selectedModel.startsWith("gpt-oss-120b");
   const isOpenAIModel = selectedModel.startsWith("gpt-5");
+  const isXAIModel = selectedModel.startsWith("grok-");
   const reasoningOptions = isOpenAIModel
     ? OPENAI_REASONING_OPTIONS
-    : CEREBRAS_REASONING_OPTIONS;
+    : isXAIModel
+      ? XAI_REASONING_OPTIONS
+      : CEREBRAS_REASONING_OPTIONS;
   const selectedModelLabel =
     MODEL_OPTIONS.find((option) => option.value === selectedModel)?.label ??
     "Model";
@@ -180,6 +195,13 @@ export function ChatInput() {
       (reasoningEffort === "none" || reasoningEffort === "xhigh")
     ) {
       setReasoningEffort("low");
+    }
+
+    if (
+      model.startsWith("grok-") &&
+      (reasoningEffort === "none" || reasoningEffort === "xhigh")
+    ) {
+      setReasoningEffort("high");
     }
   };
 
@@ -200,8 +222,8 @@ export function ChatInput() {
 
     try {
       // Determine which API to use based on model selection
-      if (isCerebrasModel || isOpenAIModel) {
-        // Use Cerebras or OpenAI API with reasoning effort
+      if (isCerebrasModel || isOpenAIModel || isXAIModel) {
+        // Use Cerebras, OpenAI, or xAI API with reasoning effort
         await sendMessage(
           messageContent,
           currentAttachments,
@@ -496,8 +518,8 @@ export function ChatInput() {
                 </SelectContent>
               </Select>
 
-              {/* Reasoning Effort Selector (show for Cerebras and OpenAI models) */}
-              {(isCerebrasModel || isOpenAIModel) && (
+              {/* Reasoning Effort Selector (show for Cerebras, OpenAI, and xAI models) */}
+              {(isCerebrasModel || isOpenAIModel || isXAIModel) && (
                 <Select
                   value={reasoningEffort}
                   onValueChange={(value) =>
