@@ -15,7 +15,7 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 
 - **Provider**: OpenAI
 - **Models**: GPT-5.5, GPT-5.4, GPT-5, GPT-5.4 Mini, GPT-5.4 Nano
-- **Features**: Function calling, Firecrawl web search, file attachments, context awareness
+- **Features**: Function calling, Firecrawl/Jina web search, file attachments, context awareness
 - **File**: `openai/route.ts`
 
 ### 3. Cerebras Chat API (`/api/chat/cerebras`)
@@ -29,7 +29,7 @@ This directory contains the chat API endpoints, supporting multiple AI providers
 
 - **Provider**: xAI (Grok)
 - **Models**: Grok 4.5
-- **Features**: Function calling, reasoning effort control (`low`/`medium`/`high`), file attachments, Firecrawl web search
+- **Features**: Function calling, reasoning effort control (`low`/`medium`/`high`), file attachments, Firecrawl/Jina web search
 - **File**: `xai/route.ts`
 
 ## Model Selection
@@ -86,8 +86,12 @@ XAI_API_KEY=your_xai_api_key
 
 # Optional shared web search and scraping for every provider
 FIRECRAWL_API_KEY=fc-your_firecrawl_api_key
+# Get your Jina AI API key for free: https://jina.ai/?sui=apikey
+JINA_API_KEY=jina_your_jina_api_key
+# Optional override when both keys are set: firecrawl | jina
+WEB_SEARCH_PROVIDER=
 
-# Claude-native fallback when Firecrawl is not configured
+# Claude-native fallback when no shared provider is configured
 WEB_SEARCH_MAX_USES=5
 ```
 

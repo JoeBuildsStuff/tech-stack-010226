@@ -6,6 +6,8 @@ This directory contains tool definitions and execution logic for the chat API.
 
 - `index.ts` - Exports all enabled tools and executor mapping
 - `note-tools.ts` - Note-specific tools (create/list/read/update note, read/add/reply comments)
+- `firecrawl-tools.ts` - Firecrawl `web_search` / `web_scrape` providers
+- `jina-tools.ts` - Jina AI `web_search` / `web_scrape` providers
 - `template-tool.ts` - Optional template for creating additional tools
 - `README.md` - Documentation
 
@@ -32,14 +34,21 @@ This directory contains tool definitions and execution logic for the chat API.
 - `notes_reply_to_comment`
   - Input: `noteId`, `threadId`, `content`
   - Output: created reply comment metadata
-- `web_search` (enabled when `FIRECRAWL_API_KEY` is configured)
-  - Input: `query`, optional `limit`, `recency`, and domain filters
-  - Output: current Firecrawl search results with titles, URLs, and descriptions
-- `web_scrape` (enabled when `FIRECRAWL_API_KEY` is configured)
+- `web_search` (enabled when Firecrawl or Jina is configured)
+  - Firecrawl input: `query`, optional `limit`, `recency`, and domain filters
+  - Jina input: `query`, optional `limit`, and `site`
+  - Output: current search results with titles, URLs, and descriptions
+- `web_scrape` (enabled when Firecrawl or Jina is configured)
   - Input: public `url`, optional `maxChars`
-  - Output: clean Markdown and source metadata from Firecrawl
+  - Output: clean Markdown and source metadata
 
-Note tools enforce Supabase auth and only operate on notes owned by the current user. Firecrawl tools run server-side with bounded inputs and never expose the API key to the client.
+Provider selection:
+- Set `FIRECRAWL_API_KEY` and/or `JINA_API_KEY`
+- Optional `WEB_SEARCH_PROVIDER=firecrawl|jina` forces one provider when that key exists
+- Default preference: Firecrawl, then Jina
+- Get a free Jina key at https://jina.ai/?sui=apikey
+
+Note tools enforce Supabase auth and only operate on notes owned by the current user. Web search tools run server-side with bounded inputs and never expose API keys to the client.
 
 ## Notes Page Context
 

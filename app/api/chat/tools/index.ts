@@ -21,10 +21,45 @@ import {
   firecrawlScrapeTool,
   firecrawlSearchTool,
 } from './firecrawl-tools'
+import {
+  executeJinaScrape,
+  executeJinaSearch,
+  jinaScrapeTool,
+  jinaSearchTool,
+} from './jina-tools'
 
-const firecrawlTools: Anthropic.Tool[] = process.env.FIRECRAWL_API_KEY
-  ? [firecrawlSearchTool, firecrawlScrapeTool]
-  : []
+export type WebSearchProvider = 'firecrawl' | 'jina'
+
+/**
+ * Resolves which shared web search provider to use.
+ * WEB_SEARCH_PROVIDER can force `firecrawl` or `jina` when that key is present.
+ * Otherwise prefers Firecrawl, then Jina.
+ */
+export function resolveWebSearchProvider(): WebSearchProvider | null {
+  const preferred = process.env.WEB_SEARCH_PROVIDER?.trim().toLowerCase()
+  const hasFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY)
+  const hasJina = Boolean(process.env.JINA_API_KEY)
+
+  if (preferred === 'jina') return hasJina ? 'jina' : null
+  if (preferred === 'firecrawl') return hasFirecrawl ? 'firecrawl' : null
+  if (hasFirecrawl) return 'firecrawl'
+  if (hasJina) return 'jina'
+  return null
+}
+
+const webSearchProvider = resolveWebSearchProvider()
+
+const webSearchTools: Anthropic.Tool[] =
+  webSearchProvider === 'jina'
+    ? [jinaSearchTool, jinaScrapeTool]
+    : webSearchProvider === 'firecrawl'
+      ? [firecrawlSearchTool, firecrawlScrapeTool]
+      : []
+
+const executeWebSearch =
+  webSearchProvider === 'jina' ? executeJinaSearch : executeFirecrawlSearch
+const executeWebScrape =
+  webSearchProvider === 'jina' ? executeJinaScrape : executeFirecrawlScrape
 
 export type ToolExecutionContext = {
   appBaseUrl?: string
@@ -39,7 +74,7 @@ export const availableTools: Anthropic.Tool[] = [
   notesUpdateNoteTool,
   notesAddCommentTool,
   notesReplyToCommentTool,
-  ...firecrawlTools,
+  ...webSearchTools,
 ]
 
 // Export all execution functions - map tool name to executor
@@ -51,8 +86,12 @@ export const toolExecutors: Record<string, (parameters: Record<string, unknown>,
   notes_update_note: executeNotesUpdateNote,
   notes_add_comment: executeNotesAddComment,
   notes_reply_to_comment: executeNotesReplyToComment,
-  web_search: executeFirecrawlSearch,
-  web_scrape: executeFirecrawlScrape,
+  ...(webSearchProvider
+    ? {
+        web_search: executeWebSearch,
+        web_scrape: executeWebScrape,
+      }
+    : {}),
 }
 
 // Re-export individual tools for direct access
@@ -66,4 +105,6 @@ export {
   notesReplyToCommentTool,
   firecrawlSearchTool,
   firecrawlScrapeTool,
+  jinaSearchTool,
+  jinaScrapeTool,
 }

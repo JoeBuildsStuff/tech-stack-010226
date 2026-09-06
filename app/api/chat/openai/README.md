@@ -91,8 +91,8 @@ console.log(result.message);
 
 ## Differences from Anthropic
 
-- **Web Search**: Uses the shared Firecrawl tools when `FIRECRAWL_API_KEY` is configured
-- **Citations**: Firecrawl sources are included as Markdown links rather than Anthropic citation blocks
+- **Web Search**: Uses shared Firecrawl or Jina tools when a provider key is configured
+- **Citations**: Provider sources are included as Markdown links rather than Anthropic citation blocks
 - **File Handling**: Images are passed as Responses input images; non-image files are converted to text descriptions
 - **Reasoning Effort**: The `reasoning_effort` parameter is forwarded to the Responses API
 

@@ -4,6 +4,7 @@ import type { ChatMessage, PageContext } from "@/types/chat";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   availableTools,
+  resolveWebSearchProvider,
   toolExecutors,
   type ToolExecutionContext,
 } from "../tools";
@@ -519,9 +520,9 @@ User Navigation Context:
       webSearchEnabled ||
       (tool.name !== "web_search" && tool.name !== "web_scrape")
   );
-  // Firecrawl supplies the shared web_search tool when configured. Keep
-  // Anthropic's native server tool as a Claude-only fallback.
-  if (webSearchEnabled && !process.env.FIRECRAWL_API_KEY) {
+  // Firecrawl or Jina supplies the shared web_search tool when configured.
+  // Keep Anthropic's native server tool as a Claude-only fallback.
+  if (webSearchEnabled && !resolveWebSearchProvider()) {
     tools.push({
       type: "web_search_20250305",
       name: "web_search",
@@ -806,7 +807,7 @@ User Navigation Context:
             webSearchEnabled ||
             (tool.name !== "web_search" && tool.name !== "web_scrape")
         );
-        if (webSearchEnabled && !process.env.FIRECRAWL_API_KEY) {
+        if (webSearchEnabled && !resolveWebSearchProvider()) {
           tools.push({
             type: "web_search_20250305",
             name: "web_search",
