@@ -10,6 +10,9 @@ export function useHydrateOpenChatTabs() {
     openSessionIds,
     closeSessionTab,
     upsertSessionFromServer,
+    accountId,
+    accountEpoch,
+    isAccountReady,
   } = useChatStore();
 
   const missingOpenSessionIds = useMemo(() => {
@@ -20,20 +23,33 @@ export function useHydrateOpenChatTabs() {
   const requestedKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (missingOpenSessionIds.length === 0) return;
+    if (!isAccountReady || !accountId || missingOpenSessionIds.length === 0)
+      return;
 
-    const requestKey = missingOpenSessionIds.join("\0");
-    if (requestedKeysRef.current.has(requestKey)) return;
-    requestedKeysRef.current.add(requestKey);
+    const requestedKeys = requestedKeysRef.current;
+    const requestKey = `${accountId}:${accountEpoch}:${missingOpenSessionIds.join("\0")}`;
+    if (requestedKeys.has(requestKey)) return;
+    requestedKeys.add(requestKey);
 
     let cancelled = false;
 
     async function hydrateOpenTabs() {
-      const res = await getChatSessionSummariesByIds(missingOpenSessionIds);
-      if (cancelled) return;
+      const res = await getChatSessionSummariesByIds(
+        missingOpenSessionIds,
+        accountId
+      );
+      const current = useChatStore.getState();
+      if (
+        cancelled ||
+        current.accountId !== accountId ||
+        current.accountEpoch !== accountEpoch ||
+        !current.isAccountReady
+      ) {
+        return;
+      }
 
       if ("error" in res && res.error) {
-        requestedKeysRef.current.delete(requestKey);
+        requestedKeys.delete(requestKey);
         return;
       }
 
@@ -45,7 +61,6 @@ export function useHydrateOpenChatTabs() {
           title: row.title,
           createdAt: new Date(row.created_at),
           updatedAt: new Date(row.updated_at),
-          messages: [],
         });
       }
 
@@ -60,9 +75,13 @@ export function useHydrateOpenChatTabs() {
 
     return () => {
       cancelled = true;
+      requestedKeys.delete(requestKey);
     };
   }, [
     closeSessionTab,
+    accountId,
+    accountEpoch,
+    isAccountReady,
     missingOpenSessionIds,
     upsertSessionFromServer,
   ]);

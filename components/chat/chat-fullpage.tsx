@@ -17,7 +17,7 @@ import { PictureInPicture2, PanelRight, LaptopMinimal } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export function ChatFullPage() {
-  const { setLayoutMode } = useChatStore();
+  const { setLayoutMode, currentSessionId, accountId } = useChatStore();
   const router = useRouter();
 
   const { handleActionClick } = useChat({
@@ -133,7 +133,7 @@ export function ChatFullPage() {
         </div>
         {/* Input Area */}
         <div className="">
-          <ChatInput />
+          <ChatInput key={`${accountId}:${currentSessionId}`} />
         </div>
       </div>
     </div>

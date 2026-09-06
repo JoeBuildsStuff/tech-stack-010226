@@ -1,5 +1,7 @@
 # Chat System Documentation
 
+> For the current account boundary, request lifecycle, durable conversation model and migration requirements, see [chat architecture](../../lib/chat/README.md). The component examples below predate that persistence refactor.
+
 This directory contains a comprehensive chat system for data-driven applications. The chat provides contextual assistance for filtering, sorting, and navigating through data tables.
 
 ## Architecture Overview

@@ -3,6 +3,7 @@
 import { useState, useRef, KeyboardEvent } from "react";
 import { FileImage, Globe, ArrowUp, Square, Paperclip } from "lucide-react";
 
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -211,6 +212,9 @@ export function ChatInput() {
 
     const messageContent = trimmedInput || "Sent with attachments";
     const currentAttachments = [...attachments];
+    const account = useChatStore.getState();
+    const requestEpoch = account.accountEpoch;
+    const requestSessionId = account.currentSessionId;
 
     setInput("");
     setAttachments([]);
@@ -240,6 +244,18 @@ export function ChatInput() {
           undefined,
           { webSearchEnabled }
         );
+      }
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountEpoch === requestEpoch &&
+        current.currentSessionId === requestSessionId
+      ) {
+        setInput((value) => value || trimmedInput);
+        setAttachments((value) => (value.length ? value : currentAttachments));
+        toast.error("Unable to send message", {
+          description: error instanceof Error ? error.message : "Please retry.",
+        });
       }
     } finally {
       // Focus back to input

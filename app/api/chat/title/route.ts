@@ -34,6 +34,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const expectedAccountId = request.headers.get("x-chat-account-id");
+  if (expectedAccountId && expectedAccountId !== userData.user.id) {
+    return NextResponse.json({ error: "Chat account changed" }, { status: 409 });
+  }
+
   const body = (await request.json()) as {
     sessionId?: unknown;
     message?: unknown;

@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   Moon,
-  Settings,
   Sun,
   User,
 } from "lucide-react"
@@ -42,6 +41,7 @@ import { useCurrentUserName } from "@/hooks/use-current-user-name"
 import { useCurrentUserEmail } from "@/hooks/use-current-user-email"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { signOut } from "@/app/(Auth)/actions/auth"
+import { useChatStore } from "@/lib/chat/chat-store"
 
 type AuthButtonProps = {
   variant?: "icon" | "full"
@@ -67,8 +67,10 @@ export function AuthButton({ variant = "full", side }: AuthButtonProps) {
   // Handle login/logout
   const handleAuthAction = () => {
     if (isAuthenticated) {
-      // Logout - signOut is a server action that handles redirect
-      signOut()
+      // Clear and abort client work before the server action redirects. The
+      // auth listener also handles sign-outs from other tabs/providers.
+      useChatStore.getState().resetForAccount(null)
+      void signOut()
     } else {
       // Redirect to login
       router.push('/signin')

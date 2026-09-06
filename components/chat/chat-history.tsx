@@ -7,31 +7,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { useChatStore } from "@/lib/chat/chat-store";
 import { cn } from "@/lib/utils";
+import { useChat } from "@/hooks/use-chat";
+import { toast } from "sonner";
 
 import { useEffect, useState } from "react";
 import {
   createChatSession,
   deleteChatSession,
   listChatSessions,
-  getChatMessages,
 } from "@/actions/chat";
-import type { Database } from "@/types/supabase";
 import { Skeleton } from "../ui/skeleton";
-
-// Types for the database rows with relations (tech_stack_2026 schema)
-type ChatMessageRow =
-  Database["tech_stack_2026"]["Tables"]["chat_messages"]["Row"] & {
-    chat_attachments: Database["tech_stack_2026"]["Tables"]["chat_attachments"]["Row"][];
-    chat_tool_calls: Database["tech_stack_2026"]["Tables"]["chat_tool_calls"]["Row"][];
-    chat_suggested_actions: Database["tech_stack_2026"]["Tables"]["chat_suggested_actions"]["Row"][];
-  };
-
-type ChatAttachmentRow =
-  Database["tech_stack_2026"]["Tables"]["chat_attachments"]["Row"];
-type ChatSuggestedActionRow =
-  Database["tech_stack_2026"]["Tables"]["chat_suggested_actions"]["Row"];
-type ChatToolCallRow =
-  Database["tech_stack_2026"]["Tables"]["chat_tool_calls"]["Row"];
 
 // Type for the mapped session data returned by listChatSessions
 type ChatSessionSummaryRow = {
@@ -49,9 +34,12 @@ export function ChatHistory() {
     deleteSession: deleteLocalSession,
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
-    setMessagesForSession,
     openSessionTab,
+    accountId,
+    accountEpoch,
+    isAccountReady,
   } = useChatStore();
+  const { loadConversation } = useChat();
 
   const [sessions, setSessions] = useState<
     Array<{
@@ -63,13 +51,32 @@ export function ChatHistory() {
     }>
   >([]);
   const [loading, setLoading] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isAccountReady || !accountId) {
+      setSessions([]);
+      setLoading(false);
+      return;
+    }
+    const requestEpoch = accountEpoch;
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const res = await listChatSessions();
+      const res = await listChatSessions(accountId);
+      const current = useChatStore.getState();
+      if (
+        cancelled ||
+        current.accountId !== accountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        setLoading(false);
+        return;
+      }
       if ("error" in res && res.error) {
         setLoading(false);
+        toast.error("Unable to load chat history", { description: res.error });
         return;
       }
       const mapped = (res.data || []).map((row: ChatSessionSummaryRow) => ({
@@ -86,137 +93,87 @@ export function ChatHistory() {
           title: s.title,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
-          messages: [],
         })
       );
       setSessions(mapped);
       setLoading(false);
     };
-    load();
-  }, [upsertSessionFromServer]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountEpoch, accountId, isAccountReady, upsertSessionFromServer]);
 
   const handleSessionClick = async (sessionId: string) => {
-    setCurrentSessionIdFromServer(sessionId);
-    openSessionTab(sessionId);
-    // fetch messages for the session and populate
-    const res = await getChatMessages(sessionId);
-    if (!("error" in res) && res.data) {
-      // map to UI messages; we only include minimal fields here; use-chat’s refresh has fuller mapping.
-      const rows = res.data;
-      const msgs = await Promise.all(
-        rows.map(async (m: ChatMessageRow) => {
-          const attachments = Array.isArray(m.chat_attachments)
-            ? await Promise.all(
-                m.chat_attachments.map(async (att: ChatAttachmentRow) => {
-                  const endpoint = (att.mime_type as string)?.startsWith(
-                    "image/"
-                  )
-                    ? "/api/images/serve"
-                    : "/api/files/serve";
-                  try {
-                    const r = await fetch(
-                      `${endpoint}?path=${encodeURIComponent(att.storage_path)}`
-                    );
-                    const j = await r.json();
-                    const signed = j.imageUrl || j.fileUrl;
-                    return {
-                      id: att.id,
-                      name: att.name,
-                      size: att.size,
-                      type: att.mime_type,
-                      url: signed,
-                    };
-                  } catch {
-                    return {
-                      id: att.id,
-                      name: att.name,
-                      size: att.size,
-                      type: att.mime_type,
-                    };
-                  }
-                })
-              )
-            : [];
-          return {
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: new Date(m.created_at),
-            reasoning: m.reasoning || undefined,
-            attachments,
-            context: m.context
-              ? typeof m.context === "object" && m.context !== null
-                ? (m.context as {
-                    filters?: Record<string, unknown>;
-                    data?: Record<string, unknown>;
-                  })
-                : undefined
-              : undefined,
-            suggestedActions: Array.isArray(m.chat_suggested_actions)
-              ? m.chat_suggested_actions.map((a: ChatSuggestedActionRow) => ({
-                  type: a.type,
-                  label: a.label,
-                  payload:
-                    a.payload &&
-                    typeof a.payload === "object" &&
-                    a.payload !== null
-                      ? (a.payload as Record<string, unknown>)
-                      : {},
-                }))
-              : undefined,
-            functionResult: m.function_result
-              ? typeof m.function_result === "object" &&
-                m.function_result !== null
-                ? (m.function_result as {
-                    success: boolean;
-                    data?: unknown;
-                    error?: string;
-                  })
-                : undefined
-              : undefined,
-            toolCalls: Array.isArray(m.chat_tool_calls)
-              ? m.chat_tool_calls.map((t: ChatToolCallRow) => ({
-                  id: t.id,
-                  name: t.name,
-                  arguments: t.arguments as Record<string, unknown>,
-                  result: t.result
-                    ? typeof t.result === "object" && t.result !== null
-                      ? (t.result as {
-                          success: boolean;
-                          data?: unknown;
-                          error?: string;
-                        })
-                      : undefined
-                    : undefined,
-                  reasoning: t.reasoning || undefined,
-                }))
-              : undefined,
-            citations: m.citations
-              ? Array.isArray(m.citations)
-                ? (m.citations as Array<{
-                    url: string;
-                    title: string;
-                    cited_text: string;
-                  }>)
-                : undefined
-              : undefined,
-          };
-        })
-      );
-      setMessagesForSession(sessionId, msgs);
+    if (loadingSessionId || !isAccountReady || !accountId) return;
+    const requestEpoch = accountEpoch;
+    setLoadingSessionId(sessionId);
+    try {
+      await loadConversation(sessionId);
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== accountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        return;
+      }
+      openSessionTab(sessionId);
+      setShowHistory(false);
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountId === accountId &&
+        current.accountEpoch === requestEpoch &&
+        current.isAccountReady
+      ) {
+        toast.error("Unable to open chat", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    } finally {
+      setLoadingSessionId(null);
     }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    await deleteChatSession(sessionId);
+    if (!accountId || !isAccountReady) return;
+    const requestEpoch = accountEpoch;
+    const res = await deleteChatSession(sessionId, accountId);
+    const current = useChatStore.getState();
+    if (
+      current.accountId !== accountId ||
+      current.accountEpoch !== requestEpoch ||
+      !current.isAccountReady
+    ) {
+      return;
+    }
+    if ("error" in res && res.error) {
+      toast.error("Unable to delete chat", { description: res.error });
+      return;
+    }
     // update local store and list
     deleteLocalSession(sessionId);
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
   };
 
   const handleNewChat = async () => {
-    const res = await createChatSession();
-    if ("error" in res && res.error) return;
+    if (!accountId || !isAccountReady) return;
+    const requestEpoch = accountEpoch;
+    const res = await createChatSession({ accountId });
+    const current = useChatStore.getState();
+    if (
+      current.accountId !== accountId ||
+      current.accountEpoch !== requestEpoch ||
+      !current.isAccountReady
+    ) {
+      return;
+    }
+    if ("error" in res && res.error) {
+      toast.error("Unable to create chat", { description: res.error });
+      return;
+    }
     const row = res.data!;
     const s = {
       id: row.id,
@@ -230,7 +187,6 @@ export function ChatHistory() {
       title: s.title,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
-      messages: [],
     });
     setCurrentSessionIdFromServer(s.id);
     setSessions((prev) => [s, ...prev]);

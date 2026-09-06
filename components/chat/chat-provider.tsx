@@ -1,81 +1,63 @@
 "use client";
 
-import React, { createContext, useContext } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useChatStore } from "@/lib/chat/chat-store";
-import type { ChatContextValue, ChatProviderProps } from "@/types/chat";
+import { createClient } from "@/lib/supabase/client";
 
-const ChatContext = createContext<ChatContextValue | null>(null);
+/** Bind the cache to verified auth. Conversation data never lives in context. */
+export function ChatProvider({ children }: { children: ReactNode }) {
+  const supabase = useMemo(() => createClient(), []);
+  const pathname = usePathname();
 
-export function ChatProvider({ children }: ChatProviderProps) {
-  const store = useChatStore();
+  useEffect(() => {
+    let mounted = true;
+    let authVersion = 0;
+    const state = useChatStore.getState();
+    if (!state.isAccountReady) state.setAccountPending();
 
-  // Initialize context value that maps store to the expected interface
-  const contextValue: ChatContextValue = {
-    // Session management
-    sessions: store.sessions,
-    currentSessionId: store.currentSessionId,
-    currentSession: store.currentSession,
+    const verify = async (version: number) => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (mounted && version === authVersion) {
+          useChatStore
+            .getState()
+            .setAccount(error ? null : (data.user?.id ?? null));
+        }
+      } catch {
+        if (mounted && version === authVersion)
+          useChatStore.getState().setAccount(null);
+      }
+    };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      const version = ++authVersion;
+      const current = useChatStore.getState();
+      if (
+        event === "SIGNED_OUT" ||
+        (session?.user?.id ?? null) !== current.accountId
+      ) {
+        current.setAccountPending();
+      }
+      // Leave the auth callback before calling another auth method; the SDK
+      // processes callbacks under its auth lock.
+      setTimeout(() => {
+        if (mounted) void verify(version);
+      }, 0);
+    });
+    void verify(++authVersion);
+    const onFocus = () => {
+      void verify(++authVersion);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [supabase, pathname]); // Recheck server-action sign-outs after navigation too.
 
-    // Legacy support - maps to current session
-    messages: store.messages,
-    isOpen: store.isOpen,
-    isMinimized: store.isMinimized,
-    isMaximized: store.isMaximized,
-    currentContext: store.currentContext,
-
-    // Session actions
-    createSession: store.createSession,
-    switchToSession: store.switchToSession,
-    deleteSession: store.deleteSession,
-    updateSessionTitle: store.updateSessionTitle,
-    getSessions: store.getSessions,
-
-    // Message actions
-    addMessage: store.addMessage,
-    updateMessage: store.updateMessage,
-    deleteMessage: store.deleteMessage,
-    clearMessages: store.clearMessages,
-
-    // UI state
-    setOpen: store.setOpen,
-    setMinimized: store.setMinimized,
-    setMaximized: store.setMaximized,
-    toggleChat: store.toggleChat,
-    showHistory: store.showHistory,
-    setShowHistory: store.setShowHistory,
-
-    // Context
-    updatePageContext: store.updatePageContext,
-
-    // Utility
-    getUnreadCount: store.getUnreadCount,
-  };
-
-  return (
-    <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>
-  );
-}
-
-export function useChatContext() {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error("useChatContext must be used within a ChatProvider");
-  }
-  return context;
-}
-
-// Convenience hook that provides additional computed values
-export function useChat() {
-  const context = useChatContext();
-
-  const hasMessages = context.messages.length > 0;
-  const lastMessage = hasMessages
-    ? context.messages[context.messages.length - 1]
-    : null;
-
-  return {
-    ...context,
-    hasMessages,
-    lastMessage,
-  };
+  return children;
 }

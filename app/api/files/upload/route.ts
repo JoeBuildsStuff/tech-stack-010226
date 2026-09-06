@@ -20,6 +20,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const expectedAccountId = request.headers.get("x-chat-account-id");
+  if (expectedAccountId && expectedAccountId !== user.id) {
+    return NextResponse.json({ error: "Chat account changed. Please send again." }, { status: 409 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
 

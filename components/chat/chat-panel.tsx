@@ -18,7 +18,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 export function ChatPanel() {
-  const { isOpen, isMinimized, isMaximized, showHistory } = useChatStore();
+  const accountId = useChatStore((state) => state.accountId);
+  const ready = useChatStore((state) => state.isAccountReady);
+  return ready && accountId ? <ChatPanelContent key={accountId} /> : null;
+}
+
+function ChatPanelContent() {
+  const { isOpen, isMinimized, isMaximized, showHistory, currentSessionId } =
+    useChatStore();
   const router = useRouter();
 
   const { handleActionClick } = useChat({
@@ -117,7 +124,7 @@ export function ChatPanel() {
 
           {/* Input Area */}
           <div className="bg-transparent">
-            <ChatInput />
+            <ChatInput key={currentSessionId || "new"} />
           </div>
         </>
       )}

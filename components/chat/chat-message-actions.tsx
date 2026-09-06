@@ -8,8 +8,8 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
-import { useChatStore } from "@/lib/chat/chat-store";
 import { useChat } from "@/hooks/use-chat";
+import { useChatStore } from "@/lib/chat/chat-store";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/ui/copy-button";
 
@@ -29,38 +29,56 @@ export default function ChatMessageActions({
   message,
   onEdit,
 }: ChatMessageActionsProps) {
-  const {
-    retryMessage,
-    getBranchStatus,
-    getAssistantVariantStatus,
-    goToPreviousMessageList,
-    goToNextMessageList,
-    goToPreviousVariant,
-    goToNextVariant,
-  } = useChatStore();
-  const { sendMessage } = useChat();
+  const { retryMessage, selectBranch, isLoading } = useChat();
+  const accountId = useChatStore((state) => state.accountId);
+  const accountEpoch = useChatStore((state) => state.accountEpoch);
+  const { branchInfo } = message;
 
-  const handleRetry = () => {
-    // If retry is clicked on an assistant message, retry the preceding user message
-    const { messages } = useChatStore.getState();
-    let targetMessageId = message.id;
-
-    if (message.role === "assistant") {
-      const idx = messages.findIndex((m) => m.id === message.id);
-      const prevUser = [...messages]
-        .slice(0, idx)
-        .reverse()
-        .find((m) => m.role === "user");
-      if (prevUser) targetMessageId = prevUser.id;
+  const handleRetry = async () => {
+    const requestEpoch = accountEpoch;
+    const requestAccountId = accountId;
+    try {
+      // Pass the rendered message id so the server can preserve this turn's
+      // model, reasoning, web-search, and attachment settings.
+      await retryMessage(message.id);
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== requestAccountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        return;
+      }
+      toast.success("Response regenerated");
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountId === requestAccountId &&
+        current.accountEpoch === requestEpoch &&
+        current.isAccountReady
+      ) {
+        toast.error("Unable to retry message", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      }
     }
+  };
 
-    retryMessage(targetMessageId, (content) => {
-      // Resend using the existing user message (keep place, no new bubble)
-      sendMessage(content, undefined, undefined, undefined, {
-        skipUserAdd: true,
-      });
-    });
-    toast.success("Retrying message...");
+  const handleSelectBranch = async (messageId: string) => {
+    try {
+      await selectBranch(messageId);
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountId === accountId &&
+        current.accountEpoch === accountEpoch
+      ) {
+        toast.error("Unable to select branch", {
+          description: error instanceof Error ? error.message : "Please retry.",
+        });
+      }
+    }
   };
 
   const handleUpvote = () => {
@@ -138,6 +156,7 @@ export default function ChatMessageActions({
                   size="icon"
                   className="p-2 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
                   onClick={handleRetry}
+                  disabled={isLoading}
                 >
                   <RotateCcw />
                 </Button>
@@ -152,49 +171,37 @@ export default function ChatMessageActions({
                 Retry
               </TooltipContent>
             </Tooltip>
-            {(() => {
-              // Assistant-level navigation should cycle variants for the same prompt content only
-              const { messages } = useChatStore.getState();
-              const idx = messages.findIndex((m) => m.id === message.id);
-              const prevUser = [...messages]
-                .slice(0, idx)
-                .reverse()
-                .find((m) => m.role === "user");
-              if (!prevUser) return null;
-              const { current, total } = getAssistantVariantStatus(prevUser.id);
-              if (total <= 1) return null;
-              return (
-                <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
-                    onClick={() => goToPreviousVariant(prevUser.id)}
-                    disabled={current <= 1}
-                  >
-                    <ChevronLeft
-                      className="size-5 shrink-0"
-                      strokeWidth={1.5}
-                    />
-                  </Button>
-                  <span className="text-muted-foreground text-sm">
-                    {current} / {total}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
-                    onClick={() => goToNextVariant(prevUser.id)}
-                    disabled={current >= total}
-                  >
-                    <ChevronRight
-                      className="size-5 shrink-0"
-                      strokeWidth={1.5}
-                    />
-                  </Button>
-                </div>
-              );
-            })()}
+            {branchInfo && branchInfo.total > 1 && (
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
+                  onClick={() =>
+                    branchInfo.previousId &&
+                    void handleSelectBranch(branchInfo.previousId)
+                  }
+                  disabled={!branchInfo.previousId || isLoading}
+                >
+                  <ChevronLeft className="size-5 shrink-0" strokeWidth={1.5} />
+                </Button>
+                <span className="text-muted-foreground text-sm">
+                  {branchInfo.current} / {branchInfo.total}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
+                  onClick={() =>
+                    branchInfo.nextId &&
+                    void handleSelectBranch(branchInfo.nextId)
+                  }
+                  disabled={!branchInfo.nextId || isLoading}
+                >
+                  <ChevronRight className="size-5 shrink-0" strokeWidth={1.5} />
+                </Button>
+              </div>
+            )}
           </>
         )}
 
@@ -208,6 +215,7 @@ export default function ChatMessageActions({
                   size="icon"
                   className="p-2 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
                   onClick={onEdit}
+                  disabled={isLoading}
                 >
                   <Pencil className="size-4 shrink-0" strokeWidth={1.5} />
                 </Button>
@@ -222,41 +230,37 @@ export default function ChatMessageActions({
                 Edit
               </TooltipContent>
             </Tooltip>
-            {(() => {
-              const { current, total } = getBranchStatus(message.id);
-              if (total <= 1) return null;
-              return (
-                <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
-                    onClick={() => goToPreviousMessageList(message.id)}
-                    disabled={current <= 1}
-                  >
-                    <ChevronLeft
-                      className="size-5 shrink-0"
-                      strokeWidth={1.5}
-                    />
-                  </Button>
-                  <span className="text-muted-foreground text-sm">
-                    {current} / {total}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
-                    onClick={() => goToNextMessageList(message.id)}
-                    disabled={current >= total}
-                  >
-                    <ChevronRight
-                      className="size-5 shrink-0"
-                      strokeWidth={1.5}
-                    />
-                  </Button>
-                </div>
-              );
-            })()}
+            {branchInfo && branchInfo.total > 1 && (
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
+                  onClick={() =>
+                    branchInfo.previousId &&
+                    void handleSelectBranch(branchInfo.previousId)
+                  }
+                  disabled={!branchInfo.previousId || isLoading}
+                >
+                  <ChevronLeft className="size-5 shrink-0" strokeWidth={1.5} />
+                </Button>
+                <span className="text-muted-foreground text-sm">
+                  {branchInfo.current} / {branchInfo.total}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-1 m-0 h-fit w-fit text-muted-foreground hover:text-primary"
+                  onClick={() =>
+                    branchInfo.nextId &&
+                    void handleSelectBranch(branchInfo.nextId)
+                  }
+                  disabled={!branchInfo.nextId || isLoading}
+                >
+                  <ChevronRight className="size-5 shrink-0" strokeWidth={1.5} />
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -1408,6 +1408,10 @@ export type Database = {
           session_id: string
           variant_group_id: string | null
           variant_index: number
+          turn_id: string | null
+          model: string | null
+          settings: Json
+          status: "pending" | "streaming" | "completed" | "failed" | "cancelled"
         }
         Insert: {
           citations?: Json | null
@@ -1424,6 +1428,10 @@ export type Database = {
           session_id: string
           variant_group_id?: string | null
           variant_index?: number
+          turn_id?: string | null
+          model?: string | null
+          settings?: Json
+          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
         }
         Update: {
           citations?: Json | null
@@ -1440,6 +1448,10 @@ export type Database = {
           session_id?: string
           variant_group_id?: string | null
           variant_index?: number
+          turn_id?: string | null
+          model?: string | null
+          settings?: Json
+          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
         }
         Relationships: [
           {
@@ -1465,8 +1477,54 @@ export type Database = {
           },
         ]
       }
+      chat_turns: {
+        Row: {
+          id: string
+          session_id: string
+          mode: "new" | "edit" | "retry"
+          target_message_id: string | null
+          user_message_id: string | null
+          assistant_message_id: string | null
+          model: string
+          settings: Json
+          status: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          error: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          session_id: string
+          mode: "new" | "edit" | "retry"
+          target_message_id?: string | null
+          user_message_id?: string | null
+          assistant_message_id?: string | null
+          model?: string
+          settings?: Json
+          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          mode?: "new" | "edit" | "retry"
+          target_message_id?: string | null
+          user_message_id?: string | null
+          assistant_message_id?: string | null
+          model?: string
+          settings?: Json
+          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       chat_sessions: {
         Row: {
+          active_leaf_id: string | null
           context: Json | null
           created_at: string
           id: string
@@ -1475,6 +1533,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active_leaf_id?: string | null
           context?: Json | null
           created_at?: string
           id?: string
@@ -1483,6 +1542,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          active_leaf_id?: string | null
           context?: Json | null
           created_at?: string
           id?: string
@@ -1606,6 +1666,52 @@ export type Database = {
       is_chat_session_owner: {
         Args: { p_session_id: string }
         Returns: boolean
+      }
+      begin_chat_turn: {
+        Args: {
+          p_session_id: string
+          p_content: string
+          p_mode: string
+          p_target_message_id?: string | null
+          p_model?: string | null
+          p_settings?: Json
+          p_turn_id?: string | null
+          p_context?: Json | null
+          p_attachments?: Json
+        }
+        Returns: Json
+      }
+      complete_chat_turn: {
+        Args: {
+          p_session_id: string
+          p_turn_id: string
+          p_assistant_message_id: string
+          p_content: string
+          p_reasoning?: string | null
+          p_citations?: Json | null
+          p_function_result?: Json | null
+          p_tool_calls?: Json
+          p_actions?: Json
+        }
+        Returns: Json
+      }
+      select_chat_branch: {
+        Args: { p_session_id: string; p_message_id: string }
+        Returns: Json
+      }
+      clear_chat_conversation: {
+        Args: { p_session_id: string }
+        Returns: Json
+      }
+      fail_chat_turn: {
+        Args: {
+          p_session_id: string
+          p_turn_id: string
+          p_assistant_message_id: string
+          p_status: string
+          p_error?: string | null
+        }
+        Returns: Json
       }
     }
     Enums: {

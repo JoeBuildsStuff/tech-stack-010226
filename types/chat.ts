@@ -25,6 +25,12 @@ export interface ChatSessionSummary {
 
 // Additional types for the chat system
 export interface ChatContextValue {
+  accountId: string | null
+  accountEpoch: number
+  isAccountReady: boolean
+  isHydrated: boolean
+  loadingBySession: Record<string, string>
+
   // Session management
   sessions: ChatSession[]
   currentSessionId: string | null
@@ -171,4 +177,4 @@ export interface UseChatPersistenceReturn {
   clear: () => void
   exportData: () => string
   importData: (data: string) => boolean
-} 
+}

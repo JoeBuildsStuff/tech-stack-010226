@@ -14,7 +14,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "email": "email dev --dir emails/previews --port 3001",
-    "email:export": "node scripts/export-email-previews.mjs"
+    "email:export": "node scripts/export-email-previews.mjs",
+    "test:chat": "node --test scripts/chat-*-tests.*"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -103,6 +104,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@react-email/components": "1.0.12",
     "@react-email/ui": "^6.6.0",
     "@tailwindcss/postcss": "^4.3.1",

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { useHydrateOpenChatTabs } from "@/components/chat/use-hydrate-open-chat-tabs";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { cn } from "@/lib/utils";
+import { useChat } from "@/hooks/use-chat";
+import { toast } from "sonner";
 
 // Main footer bar for chat sessions
 export function ChatFooterBar() {
@@ -23,7 +25,6 @@ export function ChatFooterBar() {
     layoutMode,
     setLayoutMode,
     sessions,
-    switchToSession,
     setShowHistory,
     currentSessionId,
     openSessionIds,
@@ -31,18 +32,35 @@ export function ChatFooterBar() {
     closeSessionTab,
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
+    accountId,
+    accountEpoch,
+    isAccountReady,
   } = useChatStore();
+  const { loadConversation } = useChat();
   // Tracks whether a chat session is being created
   const [isCreating, setIsCreating] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   useHydrateOpenChatTabs();
 
   // Handler for creating a new chat session ("Ask Chat" button)
   const handleAskChat = async () => {
-    if (isCreating) return;
+    if (isCreating || !isAccountReady || !accountId) return;
     setIsCreating(true);
     try {
-      const res = await createChatSession();
-      if ("error" in res && res.error) return;
+      const requestEpoch = accountEpoch;
+      const res = await createChatSession({ accountId });
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== accountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        return;
+      }
+      if ("error" in res && res.error) {
+        toast.error("Unable to create chat", { description: res.error });
+        return;
+      }
       const row = res.data!;
       // Add new session to the store from server response
       upsertSessionFromServer({
@@ -50,7 +68,6 @@ export function ChatFooterBar() {
         title: row.title,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
-        messages: [],
       });
       setCurrentSessionIdFromServer(row.id);
       if (layoutMode === "inset") {
@@ -67,18 +84,45 @@ export function ChatFooterBar() {
   };
 
   // Switch to an existing session tab or open it if minimized/closed
-  const handleOpenSession = (sessionId: string) => {
-    switchToSession(sessionId);
-    openSessionTab(sessionId);
-    setShowHistory(false);
-    if (!isOpen || isMinimized) {
-      if (layoutMode === "inset") {
-        setLayoutMode("inset");
-      } else {
-        setOpen(true);
-        setMinimized(false);
-        setMaximized(false);
+  const handleOpenSession = async (sessionId: string) => {
+    if (loadingSessionId || !isAccountReady || !accountId) return;
+    const requestEpoch = accountEpoch;
+    setLoadingSessionId(sessionId);
+    try {
+      await loadConversation(sessionId);
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== accountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        return;
       }
+      openSessionTab(sessionId);
+      setShowHistory(false);
+      if (!isOpen || isMinimized) {
+        if (layoutMode === "inset") {
+          setLayoutMode("inset");
+        } else {
+          setOpen(true);
+          setMinimized(false);
+          setMaximized(false);
+        }
+      }
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountId === accountId &&
+        current.accountEpoch === requestEpoch &&
+        current.isAccountReady
+      ) {
+        toast.error("Unable to open chat", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    } finally {
+      setLoadingSessionId(null);
     }
   };
 
@@ -137,6 +181,7 @@ export function ChatFooterBar() {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleOpenSession(session.id)}
+                  disabled={loadingSessionId !== null}
                   className="relative h-auto min-w-0 flex-1 justify-start overflow-hidden px-0 text-left hover:bg-transparent"
                 >
                   {/* Session title */}

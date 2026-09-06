@@ -40,8 +40,8 @@ import {
   formatToolCallResult,
 } from "@/lib/chat/utils";
 import { useState } from "react";
-import { useChatStore } from "@/lib/chat/chat-store";
 import { useChat } from "@/hooks/use-chat";
+import { useChatStore } from "@/lib/chat/chat-store";
 import Spinner from "@/components/ui/spinner";
 import { ChatAttachmentCard } from "@/components/chat/chat-attachment-card";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
@@ -223,8 +223,9 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   const [editContent, setEditContent] = useState(message.content);
   const [selectedAttachment, setSelectedAttachment] =
     useState<ChatAttachmentLike | null>(null);
-  const { editMessage, retryMessage } = useChatStore();
-  const { sendMessage } = useChat();
+  const { isLoading, editMessage } = useChat();
+  const accountId = useChatStore((state) => state.accountId);
+  const accountEpoch = useChatStore((state) => state.accountEpoch);
 
   // Whether the message has any visible body yet. An assistant message starts
   // out empty while streaming, so its header/body should stay hidden until real
@@ -238,27 +239,53 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   // The footer actions (copy/retry/edit/thumbs) act on the final text response,
   // so they should only appear once there's actual content — not while a tool
   // call is still running and the text hasn't streamed in yet.
+  const interrupted =
+    !isLoading &&
+    (message.status === "pending" || message.status === "streaming");
   const hasActionableContent =
-    message.content.trim().length > 0 || Boolean(message.functionResult);
+    message.content.trim().length > 0 ||
+    Boolean(message.functionResult) ||
+    interrupted;
 
   const handleEdit = () => {
     setIsEditing(true);
   };
 
-  const handleEditSave = () => {
-    if (editContent.trim() !== message.content) {
-      editMessage(message.id, editContent.trim());
-      toast.success("Message updated");
-      // After updating the message content, trim chat history to this point
-      // and resend the edited message to get a fresh assistant reply.
-      retryMessage(message.id, (content) => {
-        // Resend using the existing user message (no new user bubble)
-        sendMessage(content, undefined, undefined, undefined, {
-          skipUserAdd: true,
-        });
-      });
+  const handleEditSave = async () => {
+    const content = editContent.trim();
+    if (!content || content === message.content || isLoading) {
+      setIsEditing(false);
+      return;
     }
-    setIsEditing(false);
+
+    const requestEpoch = accountEpoch;
+    const requestAccountId = accountId;
+    try {
+      await editMessage(message.id, content);
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== requestAccountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        setIsEditing(false);
+        return;
+      }
+      toast.success("Message updated");
+      setIsEditing(false);
+    } catch (error) {
+      const current = useChatStore.getState();
+      if (
+        current.accountId === requestAccountId &&
+        current.accountEpoch === requestEpoch &&
+        current.isAccountReady
+      ) {
+        toast.error("Unable to update message", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -324,6 +351,25 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
           {/* Reasoning - shown before tool calls and content for non-system messages */}
           {message.reasoning && (
             <ReasoningDisplay reasoning={message.reasoning} />
+          )}
+
+          {interrupted && (
+            <p className="text-sm text-muted-foreground">
+              This response has not finished. Retry it if the request was
+              interrupted.
+            </p>
+          )}
+          {(message.status === "failed" || message.status === "cancelled") && (
+            <Badge
+              variant={
+                message.status === "failed" ? "destructive" : "secondary"
+              }
+              className="mb-2"
+            >
+              {message.status === "failed"
+                ? "Response failed"
+                : "Response stopped"}
+            </Badge>
           )}
 
           {/* Tool calls with individual reasoning - shown before the response for non-system messages */}

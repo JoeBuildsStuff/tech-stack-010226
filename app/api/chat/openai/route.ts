@@ -139,6 +139,11 @@ export async function POST(request: NextRequest): Promise<Response> {
       );
     }
 
+    const expectedAccountId = request.headers.get("x-chat-account-id");
+    if (expectedAccountId && expectedAccountId !== user.id) {
+      return NextResponse.json({ message: "Chat account changed. Please send again." }, { status: 409 });
+    }
+
     let body: OpenAIAPIRequest;
 
     // Check if the request is multipart/form-data (file upload)

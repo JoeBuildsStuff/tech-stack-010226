@@ -4,6 +4,19 @@ import { APP_SCHEMA } from "@/lib/supabase/app-schema";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { Json } from "@/types/supabase";
+import {
+  beginChatTurn as beginDurableChatTurn,
+  clearChatConversation as clearDurableChatConversation,
+  completeChatTurn as completeDurableChatTurn,
+  failChatTurn as failDurableChatTurn,
+  getChatConversation as getDurableChatConversation,
+  selectChatBranch as selectDurableChatBranch,
+} from "@/lib/chat/server/conversation-service";
+import type {
+  BeginChatTurnInput,
+  CompleteChatTurnInput,
+  FailChatTurnInput,
+} from "@/lib/chat/conversation-types";
 
 /** Storage buckets for chat attachments. Create in Supabase Dashboard → Storage if missing. */
 const CHAT_IMAGES_BUCKET = "chat-images";
@@ -15,12 +28,16 @@ export type ChatRole = "user" | "assistant" | "system";
 export interface CreateSessionParams {
   title?: string;
   context?: Json | null;
+  accountId?: string | null;
 }
 
 export async function createChatSession(params: CreateSessionParams = {}) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Not authenticated" };
+  if (params.accountId && params.accountId !== userData.user.id) {
+    return { error: "Account changed while the chat request was in flight" };
+  }
 
   const payload = {
     user_id: userData.user.id,
@@ -37,14 +54,21 @@ export async function createChatSession(params: CreateSessionParams = {}) {
 
   if (error) return { error: error.message };
 
-  revalidatePath("/workspace");
+  revalidatePath("/dashboard");
   return { data };
 }
 
-export async function updateChatSessionTitle(sessionId: string, title: string) {
+export async function updateChatSessionTitle(
+  sessionId: string,
+  title: string,
+  accountId?: string | null
+) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Not authenticated" };
+  if (accountId && accountId !== userData.user.id) {
+    return { error: "Account changed while the chat request was in flight" };
+  }
 
   const { data, error } = await supabase
     .schema(APP_SCHEMA)
@@ -56,14 +80,20 @@ export async function updateChatSessionTitle(sessionId: string, title: string) {
     .single();
 
   if (error) return { error: error.message };
-  revalidatePath("/workspace");
+  revalidatePath("/dashboard");
   return { data };
 }
 
-export async function deleteChatSession(sessionId: string) {
+export async function deleteChatSession(
+  sessionId: string,
+  accountId?: string | null
+) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Not authenticated" };
+  if (accountId && accountId !== userData.user.id) {
+    return { error: "Account changed while the chat request was in flight" };
+  }
 
   // 1) Fetch all attachment storage paths for this session
   const { data: attachments, error: fetchError } = await supabase
@@ -108,14 +138,16 @@ export async function deleteChatSession(sessionId: string) {
     .eq("user_id", userData.user.id);
 
   if (deleteError) return { error: deleteError.message };
-  revalidatePath("/workspace");
+  revalidatePath("/dashboard");
   return { data: { success: true } };
 }
 
-export async function listChatSessions() {
+export async function listChatSessions(accountId?: string | null) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Not authenticated" };
+  if (accountId && accountId !== userData.user.id)
+    return { error: "Chat account changed" };
 
   const { data, error } = await supabase
     .schema(APP_SCHEMA)
@@ -126,7 +158,7 @@ export async function listChatSessions() {
       title,
       created_at,
       updated_at,
-      chat_messages(count)
+      chat_messages!chat_messages_session_id_fkey(count)
     `
     )
     .eq("user_id", userData.user.id)
@@ -154,10 +186,15 @@ export async function listChatSessions() {
   return { data: mapped };
 }
 
-export async function getChatSessionSummariesByIds(sessionIds: string[]) {
+export async function getChatSessionSummariesByIds(
+  sessionIds: string[],
+  accountId?: string | null
+) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Not authenticated" };
+  if (accountId && accountId !== userData.user.id)
+    return { error: "Chat account changed" };
 
   const ids = Array.from(new Set(sessionIds.filter(Boolean))).slice(0, 20);
   if (ids.length === 0) return { data: [] };
@@ -173,235 +210,39 @@ export async function getChatSessionSummariesByIds(sessionIds: string[]) {
   return { data: data || [] };
 }
 
-export interface AddMessageParams {
-  sessionId: string;
-  role: ChatRole;
-  content: string;
-  parentId?: string | null;
-  reasoning?: string | null;
-  context?: Json | null;
-  functionResult?: Json | null;
-  citations?: Json | null;
-  rootUserMessageId?: string | null;
-  variantGroupId?: string | null;
-  variantIndex?: number | null;
+/** Begin a durable turn and return the server-selected history for the provider. */
+export async function beginChatTurn(input: BeginChatTurnInput) {
+  return beginDurableChatTurn(input);
 }
 
-export async function addChatMessage(params: AddMessageParams) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const insertData = {
-    session_id: params.sessionId,
-    parent_id: params.parentId ?? null,
-    role: params.role,
-    content: params.content,
-    reasoning: params.reasoning ?? null,
-    context: params.context ?? null,
-    function_result: params.functionResult ?? null,
-    citations: params.citations ?? null,
-    root_user_message_id: params.rootUserMessageId ?? null,
-    variant_group_id: params.variantGroupId ?? null,
-    variant_index: params.variantIndex ?? 0,
-  };
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_messages")
-    .insert(insertData)
-    .select("id, created_at")
-    .single();
-
-  if (error) return { error: error.message };
-  return { data };
+/** Atomically mark the pending assistant row complete, then return its DTO. */
+export async function completeChatTurn(input: CompleteChatTurnInput) {
+  return completeDurableChatTurn(input);
 }
 
-export interface AttachmentInput {
-  name: string;
-  mime_type: string;
-  size: number;
-  storage_path: string;
-  width?: number | null;
-  height?: number | null;
+/** Persist a failed/cancelled turn so reloads never resurrect a fake response. */
+export async function failChatTurn(input: FailChatTurnInput) {
+  return failDurableChatTurn(input);
 }
 
-export async function addChatAttachments(
-  messageId: string,
-  attachments: AttachmentInput[]
+export async function getChatConversation(
+  sessionId: string,
+  accountId?: string | null
 ) {
-  if (!attachments || attachments.length === 0) return { data: [] };
-
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const rows = attachments.map((a) => ({
-    message_id: messageId,
-    name: a.name,
-    mime_type: a.mime_type,
-    size: a.size,
-    storage_path: a.storage_path,
-    width: a.width ?? null,
-    height: a.height ?? null,
-  }));
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_attachments")
-    .insert(rows)
-    .select("id, name, storage_path");
-
-  if (error) return { error: error.message };
-  return { data };
+  return getDurableChatConversation(sessionId, accountId);
 }
 
-export interface ToolCallInput {
-  name: string;
-  arguments: Json;
-  result?: Json | null;
-  reasoning?: string | null;
-}
-
-export async function addChatToolCalls(
-  messageId: string,
-  calls: ToolCallInput[]
+export async function selectChatBranch(
+  sessionId: string,
+  leafMessageId: string,
+  accountId?: string | null
 ) {
-  if (!calls || calls.length === 0) return { data: [] };
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const rows = calls.map((c) => ({
-    message_id: messageId,
-    name: c.name,
-    arguments: c.arguments,
-    result: c.result ?? null,
-    reasoning: c.reasoning ?? null,
-  }));
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_tool_calls")
-    .insert(rows)
-    .select("id, name");
-
-  if (error) return { error: error.message };
-  return { data };
+  return selectDurableChatBranch(sessionId, leafMessageId, accountId);
 }
 
-export interface SuggestedActionInput {
-  type: "filter" | "sort" | "navigate" | "create" | "function_call";
-  label: string;
-  payload: Json;
-}
-
-export async function addChatSuggestedActions(
-  messageId: string,
-  actions: SuggestedActionInput[]
+export async function clearChatConversation(
+  sessionId: string,
+  accountId?: string | null
 ) {
-  if (!actions || actions.length === 0) return { data: [] };
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const rows = actions.map((a) => ({
-    message_id: messageId,
-    type: a.type,
-    label: a.label,
-    payload: a.payload,
-  }));
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_suggested_actions")
-    .insert(rows)
-    .select("id, type, label");
-
-  if (error) return { error: error.message };
-  return { data };
-}
-
-export async function getChatMessages(sessionId: string) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_messages")
-    .select(
-      `
-      id,
-      session_id,
-      parent_id,
-      role,
-      content,
-      reasoning,
-      context,
-      function_result,
-      citations,
-      root_user_message_id,
-      variant_group_id,
-      variant_index,
-      created_at,
-      seq,
-      chat_attachments (*),
-      chat_tool_calls (*),
-      chat_suggested_actions (*)
-    `
-    )
-    .eq("session_id", sessionId)
-    .order("seq", { ascending: true });
-
-  if (error) return { error: error.message };
-  return { data };
-}
-
-export interface SetActiveVariantParams {
-  sessionId: string;
-  userMessageId: string;
-  activeIndex: number;
-  signature?: string | null;
-  signatures?: string[] | null;
-}
-
-export async function setActiveVariant(params: SetActiveVariantParams) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const row = {
-    session_id: params.sessionId,
-    user_message_id: params.userMessageId,
-    active_index: params.activeIndex,
-    signature: params.signature ?? null,
-    signatures: params.signatures ?? null,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_branch_state")
-    .upsert(row, { onConflict: "session_id,user_message_id" })
-    .select("id, active_index")
-    .single();
-
-  if (error) return { error: error.message };
-  return { data };
-}
-
-export async function getBranchState(sessionId: string) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { error: "Not authenticated" };
-
-  const { data, error } = await supabase
-    .schema(APP_SCHEMA)
-    .from("chat_branch_state")
-    .select("user_message_id, active_index, signature, signatures")
-    .eq("session_id", sessionId);
-
-  if (error) return { error: error.message };
-  return { data };
+  return clearDurableChatConversation(sessionId, accountId);
 }

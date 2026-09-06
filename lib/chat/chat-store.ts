@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import {
+  abortAllChatRequests,
+  abortChatRequest,
+} from "@/lib/chat/client/request-registry";
 
 export interface ToolCall {
   id: string;
@@ -18,6 +22,20 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
+  /** Durable conversation metadata. Server actions own its lifecycle. */
+  parentId?: string | null;
+  status?: "pending" | "streaming" | "completed" | "failed" | "cancelled";
+  model?: string | null;
+  settings?: {
+    reasoningEffort?: string | null;
+    webSearchEnabled?: boolean;
+  };
+  branchInfo?: {
+    current: number;
+    total: number;
+    previousId?: string;
+    nextId?: string;
+  };
   reasoning?: string; // Reasoning steps from Cerebras API
   attachments?: Array<{
     id: string;
@@ -77,6 +95,15 @@ export interface ChatSessionSummary {
 }
 
 interface ChatStore {
+  /** The authenticated owner of the in-memory chat state. */
+  accountId: string | null;
+  /** Monotonically increases whenever the authenticated account changes. */
+  accountEpoch: number;
+  /** False while auth and account-scoped preferences are being resolved. */
+  isAccountReady: boolean;
+  /** Zustand persistence hydration has completed. */
+  isHydrated: boolean;
+
   // Session management
   sessions: ChatSession[];
   currentSessionId: string | null;
@@ -86,6 +113,8 @@ interface ChatStore {
   isMinimized: boolean;
   isMaximized: boolean;
   isLoading: boolean;
+  /** Active request id per session. A session has at most one active request. */
+  loadingBySession: Record<string, string>;
   showHistory: boolean;
   currentContext: PageContext | null;
   layoutMode: "floating" | "inset" | "fullpage";
@@ -95,12 +124,17 @@ interface ChatStore {
   // Computed properties (will be updated whenever state changes)
   currentSession: ChatSession | null;
   messages: ChatMessage[];
-  // Per-message branch history: map user message id -> branches and active selection
-  messageBranches: Record<
-    string,
-    { branches: ChatMessage[][]; signatures: string[]; activeIndex: number }
-  >;
-  currentBranchRootId: string | null;
+  setAccountPending: () => void;
+  setAccount: (accountId: string | null) => void;
+  resetForAccount: (accountId: string | null) => void;
+  beginRequest: (sessionId: string, requestId: string) => boolean;
+  finishRequest: (sessionId: string, requestId: string) => void;
+  isRequestCurrent: (
+    sessionId: string,
+    requestId: string,
+    accountEpoch?: number
+  ) => boolean;
+  isSessionLoading: (sessionId: string) => boolean;
 
   // Session CRUD operations
   createSession: (title?: string) => string;
@@ -121,25 +155,20 @@ interface ChatStore {
   ) => void;
   setCurrentSessionIdFromServer: (sessionId: string) => void;
   setMessagesForSession: (sessionId: string, messages: ChatMessage[]) => void;
+  addMessageToSession: (
+    sessionId: string,
+    message: Omit<ChatMessage, "id" | "timestamp"> &
+      Partial<Pick<ChatMessage, "id" | "timestamp">>
+  ) => string | null;
+  updateMessageInSession: (
+    sessionId: string,
+    id: string,
+    updates: Partial<ChatMessage>
+  ) => void;
+  deleteMessageInSession: (sessionId: string, id: string) => void;
 
   // Message actions
   copyMessage: (messageId: string) => void;
-  editMessage: (messageId: string, newContent: string) => void;
-  retryMessage: (messageId: string, onRetry: (content: string) => void) => void;
-
-  // Branch navigation
-  getBranchStatus: (messageId: string) => { current: number; total: number };
-  goToPreviousMessageList: (messageId: string) => void;
-  goToNextMessageList: (messageId: string) => void;
-
-  // Assistant-level variant navigation (within current prompt content)
-  getAssistantVariantStatus: (messageId: string) => {
-    current: number;
-    total: number;
-  };
-  goToPreviousVariant: (messageId: string) => void;
-  goToNextVariant: (messageId: string) => void;
-
   // Tool call operations
   addToolCalls: (messageId: string, toolCalls: ToolCall[]) => void;
   updateToolCallResult: (
@@ -205,16 +234,54 @@ const generateSessionTitle = (messages: ChatMessage[]): string => {
   return "New Chat";
 };
 
+const CHAT_STORAGE_NAME = "chat-storage-v2";
+const CHAT_STORAGE_MAX_SIZE = 256 * 1024;
+
+type PersistedChatPreferences = {
+  accountId?: string | null;
+  currentSessionId?: string | null;
+  layoutMode?: "floating" | "inset" | "fullpage";
+  lastNonFullpageLayout?: "floating" | "inset";
+  openSessionIds?: string[];
+};
+
+const accountStorageKey = (accountId: string) =>
+  `${CHAT_STORAGE_NAME}:account:${encodeURIComponent(accountId)}`;
+
+const readAccountPreferences = (
+  accountId: string
+): PersistedChatPreferences | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(accountStorageKey(accountId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: PersistedChatPreferences };
+    return parsed.state ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const deriveLoading = (
+  loadingBySession: Record<string, string>,
+  currentSessionId: string | null
+) => Boolean(loadingBySession[currentSessionId || "__new__"]);
+
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
       // Initial state
+      accountId: null,
+      accountEpoch: 0,
+      isAccountReady: false,
+      isHydrated: false,
       sessions: [],
       currentSessionId: null,
       isOpen: false,
       isMinimized: false,
       isMaximized: false,
       isLoading: false,
+      loadingBySession: {},
       showHistory: false,
       currentContext: null,
       currentSession: null,
@@ -222,8 +289,114 @@ export const useChatStore = create<ChatStore>()(
       layoutMode: "floating",
       lastNonFullpageLayout: "floating",
       openSessionIds: [],
-      messageBranches: {},
-      currentBranchRootId: null,
+
+      setAccountPending: () => {
+        abortAllChatRequests();
+        set({
+          accountId: null,
+          accountEpoch: get().accountEpoch + 1,
+          isAccountReady: false,
+          sessions: [],
+          currentSessionId: null,
+          currentSession: null,
+          messages: [],
+          loadingBySession: {},
+          isLoading: false,
+          openSessionIds: [],
+          currentContext: null,
+          isOpen: false,
+          isMinimized: false,
+          isMaximized: false,
+          showHistory: false,
+        });
+      },
+
+      setAccount: (accountId) => {
+        const state = get();
+        const changed = state.accountId !== accountId;
+        const preferences = accountId
+          ? readAccountPreferences(accountId)
+          : null;
+
+        if (!changed && state.isAccountReady) return;
+
+        if (changed) abortAllChatRequests();
+
+        set((current) => ({
+          accountId,
+          accountEpoch: changed
+            ? current.accountEpoch + 1
+            : current.accountEpoch,
+          isAccountReady: current.isHydrated,
+          sessions: [],
+          currentSessionId: preferences?.currentSessionId ?? null,
+          currentSession: null,
+          messages: [],
+          loadingBySession: {},
+          isLoading: false,
+          layoutMode: preferences?.layoutMode ?? "floating",
+          lastNonFullpageLayout:
+            preferences?.lastNonFullpageLayout ?? "floating",
+          openSessionIds: preferences?.openSessionIds ?? [],
+          currentContext: null,
+          isOpen: false,
+          isMinimized: false,
+          isMaximized: false,
+          showHistory: false,
+        }));
+      },
+
+      resetForAccount: (accountId) => {
+        abortAllChatRequests();
+        get().setAccount(accountId);
+      },
+
+      beginRequest: (sessionId, requestId) => {
+        const state = get();
+        if (!state.isAccountReady || state.loadingBySession[sessionId])
+          return false;
+        set((current) => {
+          const loadingBySession = {
+            ...current.loadingBySession,
+            [sessionId]: requestId,
+          };
+          return {
+            loadingBySession,
+            isLoading: deriveLoading(
+              loadingBySession,
+              current.currentSessionId
+            ),
+          };
+        });
+        return true;
+      },
+
+      finishRequest: (sessionId, requestId) => {
+        set((current) => {
+          if (current.loadingBySession[sessionId] !== requestId) return current;
+          const loadingBySession = { ...current.loadingBySession };
+          delete loadingBySession[sessionId];
+          return {
+            loadingBySession,
+            isLoading: deriveLoading(
+              loadingBySession,
+              current.currentSessionId
+            ),
+          };
+        });
+      },
+
+      isRequestCurrent: (sessionId, requestId, accountEpoch) => {
+        const state = get();
+        return (
+          state.isAccountReady &&
+          state.loadingBySession[sessionId] === requestId &&
+          (accountEpoch === undefined || state.accountEpoch === accountEpoch)
+        );
+      },
+
+      isSessionLoading: (sessionId) =>
+        Boolean(get().loadingBySession[sessionId]),
 
       // Session CRUD operations
       createSession: (title?: string) => {
@@ -250,6 +423,7 @@ export const useChatStore = create<ChatStore>()(
             currentSessionId: sessionId,
             currentSession,
             messages,
+            isLoading: deriveLoading(state.loadingBySession, sessionId),
             showHistory: false,
           };
         });
@@ -268,12 +442,15 @@ export const useChatStore = create<ChatStore>()(
             currentSessionId: sessionId,
             currentSession,
             messages,
+            isLoading: deriveLoading(state.loadingBySession, sessionId),
             showHistory: false,
           };
         });
       },
 
       deleteSession: (sessionId) => {
+        const { accountId } = get();
+        if (accountId) abortChatRequest(accountId, sessionId);
         set((state) => {
           const newSessions = state.sessions.filter((s) => s.id !== sessionId);
           const newCurrentId =
@@ -286,12 +463,18 @@ export const useChatStore = create<ChatStore>()(
             newCurrentId
           );
 
+          const loadingBySession = { ...state.loadingBySession };
+          delete loadingBySession[sessionId];
           return {
             sessions: newSessions,
             currentSessionId: newCurrentId,
             currentSession,
             messages,
-            openSessionIds: state.openSessionIds.filter((id) => id !== sessionId),
+            isLoading: deriveLoading(loadingBySession, newCurrentId),
+            loadingBySession,
+            openSessionIds: state.openSessionIds.filter(
+              (id) => id !== sessionId
+            ),
           };
         });
       },
@@ -338,7 +521,87 @@ export const useChatStore = create<ChatStore>()(
       },
 
       // Message CRUD operations
+      addMessageToSession: (sessionId, messageData) => {
+        const state = get();
+        if (!state.isAccountReady) return null;
+
+        const message: ChatMessage = {
+          ...messageData,
+          id: messageData.id ?? crypto.randomUUID(),
+          timestamp: messageData.timestamp ?? new Date(),
+        };
+
+        set((current) => {
+          const exists = current.sessions.some(
+            (session) => session.id === sessionId
+          );
+          if (!exists) return current;
+          const sessions = current.sessions.map((session) => {
+            if (session.id !== sessionId) return session;
+            const messages = [...session.messages, message];
+            return {
+              ...session,
+              messages,
+              title:
+                session.title === "New Chat"
+                  ? generateSessionTitle(messages)
+                  : session.title,
+              updatedAt: new Date(),
+            };
+          });
+          const { currentSession, messages } = computeCurrentSessionAndMessages(
+            sessions,
+            current.currentSessionId
+          );
+          return { sessions, currentSession, messages };
+        });
+        return message.id;
+      },
+
+      updateMessageInSession: (sessionId, id, updates) => {
+        set((current) => {
+          const sessions = current.sessions.map((session) =>
+            session.id === sessionId
+              ? {
+                  ...session,
+                  messages: session.messages.map((message) =>
+                    message.id === id ? { ...message, ...updates } : message
+                  ),
+                  updatedAt: new Date(),
+                }
+              : session
+          );
+          const { currentSession, messages } = computeCurrentSessionAndMessages(
+            sessions,
+            current.currentSessionId
+          );
+          return { sessions, currentSession, messages };
+        });
+      },
+
+      deleteMessageInSession: (sessionId, id) => {
+        set((current) => {
+          const sessions = current.sessions.map((session) =>
+            session.id === sessionId
+              ? {
+                  ...session,
+                  messages: session.messages.filter(
+                    (message) => message.id !== id
+                  ),
+                  updatedAt: new Date(),
+                }
+              : session
+          );
+          const { currentSession, messages } = computeCurrentSessionAndMessages(
+            sessions,
+            current.currentSessionId
+          );
+          return { sessions, currentSession, messages };
+        });
+      },
+
       addMessage: (messageData) => {
+        if (!get().isAccountReady) return;
         const message: ChatMessage = {
           ...messageData,
           id: crypto.randomUUID(),
@@ -421,37 +684,11 @@ export const useChatStore = create<ChatStore>()(
             currentSessionId
           );
 
-          // If branching is active, update the active branch tail with new messages after the root
-          let messageBranches = state.messageBranches;
-          const rootId = state.currentBranchRootId;
-          if (rootId && currentSession) {
-            const rootIndex = currentSession.messages.findIndex(
-              (m) => m.id === rootId
-            );
-            if (rootIndex !== -1) {
-              const tail = currentSession.messages.slice(rootIndex + 1);
-              const entry = messageBranches[rootId];
-              if (entry) {
-                const branches = entry.branches.slice();
-                branches[entry.activeIndex] = tail;
-                messageBranches = {
-                  ...messageBranches,
-                  [rootId]: {
-                    branches,
-                    signatures: entry.signatures,
-                    activeIndex: entry.activeIndex,
-                  },
-                };
-              }
-            }
-          }
-
           return {
             sessions: updatedSessions,
             currentSessionId,
             currentSession,
             messages,
-            messageBranches,
           };
         });
       },
@@ -537,10 +774,17 @@ export const useChatStore = create<ChatStore>()(
       upsertSessionFromServer: (session) => {
         set((state) => {
           const exists = state.sessions.find((s) => s.id === session.id);
+          // Summary hydration intentionally omits messages. Preserve the
+          // in-memory transcript in that case, including an optimistic turn
+          // that is still being persisted.
+          const incomingMessages =
+            session.messages && session.messages.length > 0
+              ? session.messages
+              : (exists?.messages ?? session.messages);
           const toInsert: ChatSession = {
             id: session.id,
             title: session.title,
-            messages: session.messages || [],
+            messages: incomingMessages ?? exists?.messages ?? [],
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             context: session.context,
@@ -552,9 +796,10 @@ export const useChatStore = create<ChatStore>()(
               )
             : [toInsert, ...state.sessions];
 
+          const nextCurrentSessionId = state.currentSessionId ?? session.id;
           const { currentSession, messages } = computeCurrentSessionAndMessages(
             sessions,
-            state.currentSessionId ?? session.id
+            nextCurrentSessionId
           );
 
           const oldSession = state.sessions.find((s) => s.id === session.id);
@@ -567,8 +812,13 @@ export const useChatStore = create<ChatStore>()(
 
           return {
             sessions,
+            currentSessionId: nextCurrentSessionId,
             currentSession,
             messages,
+            isLoading: deriveLoading(
+              state.loadingBySession,
+              nextCurrentSessionId
+            ),
             openSessionIds,
           };
         });
@@ -584,6 +834,7 @@ export const useChatStore = create<ChatStore>()(
             currentSessionId: sessionId,
             currentSession,
             messages,
+            isLoading: deriveLoading(state.loadingBySession, sessionId),
             showHistory: false,
           };
         });
@@ -600,7 +851,15 @@ export const useChatStore = create<ChatStore>()(
             updatedSessions,
             state.currentSessionId
           );
-          return { sessions: updatedSessions, currentSession, messages };
+          return {
+            sessions: updatedSessions,
+            currentSession,
+            messages,
+            isLoading: deriveLoading(
+              state.loadingBySession,
+              state.currentSessionId
+            ),
+          };
         });
       },
 
@@ -610,374 +869,6 @@ export const useChatStore = create<ChatStore>()(
         if (message) {
           navigator.clipboard.writeText(message.content).catch(console.error);
         }
-      },
-
-      editMessage: (messageId: string, newContent: string) => {
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === state.currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages.map((msg) =>
-                    msg.id === messageId ? { ...msg, content: newContent } : msg
-                  ),
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            state.currentSessionId
-          );
-
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-          };
-        });
-      },
-
-      retryMessage: (messageId: string, onRetry: (content: string) => void) => {
-        const state = get();
-        const message = state.messages.find((msg) => msg.id === messageId);
-        if (!message || message.role !== "user") return;
-
-        const currentSession = state.currentSession;
-        if (!currentSession) return;
-
-        const messageIndex = currentSession.messages.findIndex(
-          (m) => m.id === messageId
-        );
-        if (messageIndex === -1) return;
-
-        const existingTail = currentSession.messages.slice(messageIndex + 1);
-
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === state.currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages.slice(0, messageIndex + 1), // keep the edited user message
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-
-          const existing = state.messageBranches[messageId];
-          const signature = (
-            state.messages.find((m) => m.id === messageId)?.content || ""
-          ).trim();
-          let branches: ChatMessage[][];
-          let signatures: string[];
-          let activeIndex: number;
-          if (!existing) {
-            branches = [existingTail, []];
-            signatures = [signature, signature];
-            activeIndex = 1;
-          } else {
-            branches = existing.branches.map((b) => b.slice());
-            branches.push([]);
-            signatures = existing.signatures.slice();
-            signatures.push(signature);
-            activeIndex = branches.length - 1;
-          }
-
-          const newBranches = {
-            ...state.messageBranches,
-            [messageId]: { branches, signatures, activeIndex },
-          };
-
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            state.currentSessionId
-          );
-
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-            messageBranches: newBranches,
-            currentBranchRootId: messageId,
-          };
-        });
-
-        if (onRetry) {
-          onRetry(message.content);
-        } else {
-          setTimeout(() => {
-            const { addMessage } = useChatStore.getState();
-            addMessage({
-              role: "user",
-              content: message.content,
-              context: message.context,
-            });
-          }, 100);
-        }
-      },
-
-      getBranchStatus: (messageId: string) => {
-        // User-level status: count distinct signatures and current position among them
-        const entry = get().messageBranches[messageId];
-        if (!entry) return { current: 0, total: 0 };
-        const order: string[] = [];
-        entry.signatures.forEach((sig) => {
-          if (!order.includes(sig)) order.push(sig);
-        });
-        if (order.length === 0) return { current: 0, total: 0 };
-        const currentSig = entry.signatures[entry.activeIndex];
-        const pos = Math.max(0, order.indexOf(currentSig));
-        return { current: pos + 1, total: order.length };
-      },
-
-      getAssistantVariantStatus: (messageId: string) => {
-        // messageId here refers to the USER message id (root)
-        const entry = get().messageBranches[messageId];
-        if (!entry) return { current: 0, total: 0 };
-        const activeSig = entry.signatures[entry.activeIndex];
-        const filtered = entry.signatures
-          .map((sig, idx) => ({ sig, idx }))
-          .filter((x) => x.sig === activeSig)
-          .map((x) => x.idx);
-        const position = filtered.indexOf(entry.activeIndex);
-        return { current: position + 1, total: filtered.length };
-      },
-
-      goToPreviousMessageList: (messageId: string) => {
-        const { currentSession, messageBranches, currentSessionId } = get();
-        const entry = messageBranches[messageId];
-        if (!currentSession || !entry) return;
-        if (entry.branches.length === 0) return;
-
-        const rootIndex = currentSession.messages.findIndex(
-          (m) => m.id === messageId
-        );
-        if (rootIndex === -1) return;
-
-        // Move to previous distinct signature group
-        const sigOrder: string[] = [];
-        entry.signatures.forEach((sig) => {
-          if (!sigOrder.includes(sig)) sigOrder.push(sig);
-        });
-        if (sigOrder.length <= 1) return;
-        const currentSig = entry.signatures[entry.activeIndex];
-        const sigPos = sigOrder.indexOf(currentSig);
-        const newSig = sigOrder[Math.max(0, sigPos - 1)];
-        const candidateIndices = entry.signatures
-          .map((sig, idx) => ({ sig, idx }))
-          .filter((x) => x.sig === newSig)
-          .map((x) => x.idx);
-        const newIndex = candidateIndices.length
-          ? Math.max(...candidateIndices)
-          : entry.activeIndex;
-        const newTail = entry.branches[newIndex] || [];
-
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages
-                    .slice(0, rootIndex + 1)
-                    .concat(newTail),
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            currentSessionId
-          );
-
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-            messageBranches: {
-              ...state.messageBranches,
-              [messageId]: {
-                branches: entry.branches,
-                signatures: entry.signatures,
-                activeIndex: newIndex,
-              },
-            },
-            currentBranchRootId: messageId,
-          };
-        });
-      },
-
-      goToNextMessageList: (messageId: string) => {
-        const { currentSession, messageBranches, currentSessionId } = get();
-        const entry = messageBranches[messageId];
-        if (!currentSession || !entry) return;
-        if (entry.branches.length === 0) return;
-
-        const rootIndex = currentSession.messages.findIndex(
-          (m) => m.id === messageId
-        );
-        if (rootIndex === -1) return;
-
-        // Move to next distinct signature group
-        const sigOrder: string[] = [];
-        entry.signatures.forEach((sig) => {
-          if (!sigOrder.includes(sig)) sigOrder.push(sig);
-        });
-        if (sigOrder.length <= 1) return;
-        const currentSig = entry.signatures[entry.activeIndex];
-        const sigPos = sigOrder.indexOf(currentSig);
-        const newSig = sigOrder[Math.min(sigOrder.length - 1, sigPos + 1)];
-        const candidateIndices = entry.signatures
-          .map((sig, idx) => ({ sig, idx }))
-          .filter((x) => x.sig === newSig)
-          .map((x) => x.idx);
-        const newIndex = candidateIndices.length
-          ? Math.max(...candidateIndices)
-          : entry.activeIndex;
-        const newTail = entry.branches[newIndex] || [];
-
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages
-                    .slice(0, rootIndex + 1)
-                    .concat(newTail),
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            currentSessionId
-          );
-
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-            messageBranches: {
-              ...state.messageBranches,
-              [messageId]: {
-                branches: entry.branches,
-                signatures: entry.signatures,
-                activeIndex: newIndex,
-              },
-            },
-            currentBranchRootId: messageId,
-          };
-        });
-      },
-
-      goToPreviousVariant: (messageId: string) => {
-        const { currentSession, messageBranches, currentSessionId } = get();
-        const entry = messageBranches[messageId];
-        if (!currentSession || !entry) return;
-        if (entry.branches.length === 0) return;
-
-        const rootIndex = currentSession.messages.findIndex(
-          (m) => m.id === messageId
-        );
-        if (rootIndex === -1) return;
-
-        const activeSig = entry.signatures[entry.activeIndex];
-        const filtered = entry.signatures
-          .map((sig, idx) => ({ sig, idx }))
-          .filter((x) => x.sig === activeSig)
-          .map((x) => x.idx);
-        const pos = filtered.indexOf(entry.activeIndex);
-        if (pos <= 0) return;
-        const newIndex = filtered[pos - 1];
-        const newTail = entry.branches[newIndex] || [];
-
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages
-                    .slice(0, rootIndex + 1)
-                    .concat(newTail),
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            currentSessionId
-          );
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-            messageBranches: {
-              ...state.messageBranches,
-              [messageId]: {
-                branches: entry.branches,
-                signatures: entry.signatures,
-                activeIndex: newIndex,
-              },
-            },
-            currentBranchRootId: messageId,
-          };
-        });
-      },
-
-      goToNextVariant: (messageId: string) => {
-        const { currentSession, messageBranches, currentSessionId } = get();
-        const entry = messageBranches[messageId];
-        if (!currentSession || !entry) return;
-        if (entry.branches.length === 0) return;
-
-        const rootIndex = currentSession.messages.findIndex(
-          (m) => m.id === messageId
-        );
-        if (rootIndex === -1) return;
-
-        const activeSig = entry.signatures[entry.activeIndex];
-        const filtered = entry.signatures
-          .map((sig, idx) => ({ sig, idx }))
-          .filter((x) => x.sig === activeSig)
-          .map((x) => x.idx);
-        const pos = filtered.indexOf(entry.activeIndex);
-        if (pos === -1 || pos >= filtered.length - 1) return;
-        const newIndex = filtered[pos + 1];
-        const newTail = entry.branches[newIndex] || [];
-
-        set((state) => {
-          const updatedSessions = state.sessions.map((session) =>
-            session.id === currentSessionId
-              ? {
-                  ...session,
-                  messages: session.messages
-                    .slice(0, rootIndex + 1)
-                    .concat(newTail),
-                  updatedAt: new Date(),
-                }
-              : session
-          );
-          const { currentSession, messages } = computeCurrentSessionAndMessages(
-            updatedSessions,
-            currentSessionId
-          );
-          return {
-            sessions: updatedSessions,
-            currentSession,
-            messages,
-            messageBranches: {
-              ...state.messageBranches,
-              [messageId]: {
-                branches: entry.branches,
-                signatures: entry.signatures,
-                activeIndex: newIndex,
-              },
-            },
-            currentBranchRootId: messageId,
-          };
-        });
       },
 
       addToolCalls: (messageId: string, toolCalls: ToolCall[]) => {
@@ -1214,153 +1105,61 @@ export const useChatStore = create<ChatStore>()(
       },
     }),
     {
-      name: "chat-storage",
+      name: CHAT_STORAGE_NAME,
+      version: 2,
       storage: createJSONStorage(() => ({
-        getItem: (name: string) => {
-          return localStorage.getItem(name);
+        // Deliberately ignore the old unscoped chat-storage key. It contained
+        // transcripts and could belong to another account.
+        getItem: () => {
+          if (typeof window !== "undefined") {
+            // Remove the pre-account-scoped cache instead of ever parsing it.
+            window.localStorage.removeItem("chat-storage");
+          }
+          return null;
         },
         setItem: (name: string, value: string) => {
-          const size = new Blob([value]).size;
-          const maxSize = 10 * 1024 * 1024; // 10MB
-
-          if (size > maxSize) {
-            console.warn("Storage quota exceeded, clearing old data");
-            // Try to clear old sessions to make room
-            const currentData = JSON.parse(
-              localStorage.getItem("chat-storage") || "{}"
-            );
-            if (currentData.sessions?.length > 2) {
-              // Keep only the 2 most recent sessions
-              const sortedSessions = currentData.sessions.sort(
-                (a: { updatedAt: string }, b: { updatedAt: string }) =>
-                  new Date(b.updatedAt).getTime() -
-                  new Date(a.updatedAt).getTime()
-              );
-              currentData.sessions = sortedSessions.slice(0, 2);
-
-              // Try to save with reduced data
-              const reducedSize = new Blob([JSON.stringify(currentData)]).size;
-              if (reducedSize <= maxSize) {
-                localStorage.setItem(
-                  "chat-storage",
-                  JSON.stringify(currentData)
-                );
-                return;
-              }
-            }
-
-            // If still too large, log error but don't throw to prevent app crash
-            console.error(
-              "Storage quota exceeded. Please clear some chat history."
-            );
-            // Try to save with minimal data
-            const minimalData = {
-              sessions: currentData.sessions.slice(0, 1),
-              currentSessionId: currentData.currentSessionId,
-              layoutMode: currentData.layoutMode,
-              lastNonFullpageLayout: currentData.lastNonFullpageLayout,
+          if (typeof window === "undefined") return;
+          try {
+            const parsed = JSON.parse(value) as {
+              state?: PersistedChatPreferences;
             };
-            const minimalSize = new Blob([JSON.stringify(minimalData)]).size;
-            if (minimalSize <= maxSize) {
-              localStorage.setItem("chat-storage", JSON.stringify(minimalData));
+            const accountId = parsed.state?.accountId;
+            if (!accountId || new Blob([value]).size > CHAT_STORAGE_MAX_SIZE)
+              return;
+            if (
+              window.localStorage.getItem(accountStorageKey(accountId)) !==
+              value
+            ) {
+              window.localStorage.setItem(accountStorageKey(accountId), value);
             }
+            window.localStorage.removeItem("chat-storage");
+          } catch {
+            // Storage is an optimization; chat state remains in memory.
           }
-
-          localStorage.setItem(name, value);
         },
         removeItem: (name: string) => {
-          localStorage.removeItem(name);
+          if (typeof window !== "undefined")
+            window.localStorage.removeItem(name);
         },
       })),
-      // Persist sessions with serialized dates
+      // Durable transcripts and branch state are server owned. Only compact,
+      // account-scoped UI preferences survive a page reload.
       partialize: (state) => ({
-        sessions: state.sessions.slice(0, 10).map((session) => ({
-          ...session,
-          messages: session.messages.slice(-50).map((msg) => ({
-            ...msg,
-            timestamp: msg.timestamp.toISOString(),
-          })),
-          createdAt: session.createdAt.toISOString(),
-          updatedAt: session.updatedAt.toISOString(),
-        })), // Keep last 10 sessions
+        accountId: state.accountId,
         currentSessionId: state.currentSessionId,
         layoutMode: state.layoutMode,
         lastNonFullpageLayout: state.lastNonFullpageLayout,
         openSessionIds: state.openSessionIds,
-        messageBranches: state.messageBranches,
-        currentBranchRootId: state.currentBranchRootId,
       }),
-      // Transform dates back when loading from storage
       onRehydrateStorage: () => (state) => {
-        if (state?.sessions) {
-          state.sessions = state.sessions.map((session) => ({
-            ...session,
-            messages: session.messages.map((msg) => ({
-              ...msg,
-              timestamp: new Date(msg.timestamp as unknown as string),
-            })),
-            createdAt: new Date(session.createdAt as unknown as string),
-            updatedAt: new Date(session.updatedAt as unknown as string),
-          }));
-
-          // Recompute current session and messages after rehydration
-          if (state.currentSessionId) {
-            const { currentSession, messages } =
-              computeCurrentSessionAndMessages(
-                state.sessions,
-                state.currentSessionId
-              );
-            state.currentSession = currentSession;
-            state.messages = messages;
-          }
-
-          // Ensure branch maps exist
-          if (!("messageBranches" in state) || !state.messageBranches) {
-            (state as unknown as ChatStore).messageBranches = {};
-          }
-          if (!("currentBranchRootId" in state)) {
-            (state as unknown as ChatStore).currentBranchRootId = null;
-          }
-          if (!("lastNonFullpageLayout" in state)) {
-            (state as unknown as ChatStore).lastNonFullpageLayout = "floating";
-          }
-          if (!("openSessionIds" in state) || !state.openSessionIds) {
-            (state as unknown as ChatStore).openSessionIds = [];
-          }
-
-          // Ensure signatures exist for each entry if an older state is loaded
-          const store = state as unknown as ChatStore;
-          if (store.messageBranches) {
-            Object.keys(store.messageBranches).forEach((key) => {
-              const entry = store.messageBranches[key] as unknown as {
-                branches: ChatMessage[][];
-                signatures?: string[];
-                activeIndex: number;
-              };
-              if (
-                !entry.signatures ||
-                entry.signatures.length !== entry.branches.length
-              ) {
-                entry.signatures = entry.branches.map(() => "");
-              }
-              // write back
-              (
-                store.messageBranches as Record<
-                  string,
-                  {
-                    branches: ChatMessage[][];
-                    signatures: string[];
-                    activeIndex: number;
-                  }
-                >
-              )[key] = {
-                branches: entry.branches,
-                signatures: entry.signatures,
-                activeIndex: entry.activeIndex,
-              };
-            });
-          }
-        }
+        if (!state) return;
+        state.sessions = [];
+        state.currentSession = null;
+        state.messages = [];
+        state.loadingBySession = {};
+        state.isLoading = false;
+        state.isHydrated = true;
+        state.isAccountReady = false;
       },
     }
   )

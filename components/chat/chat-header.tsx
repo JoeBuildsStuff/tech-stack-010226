@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useChat } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -32,6 +33,7 @@ import { ChevronLeft } from "lucide-react";
 import { Download } from "lucide-react";
 import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   createChatSession,
   updateChatSessionTitle as updateChatSessionTitleAction,
@@ -41,7 +43,6 @@ export function ChatHeader() {
   const {
     setOpen,
     setMinimized,
-    clearMessages,
     setShowHistory,
     currentSession,
     updateSessionTitle,
@@ -49,7 +50,11 @@ export function ChatHeader() {
     setLayoutMode,
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
+    accountId,
+    accountEpoch,
+    isAccountReady,
   } = useChatStore();
+  const { clearConversation, isLoading } = useChat();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
@@ -61,10 +66,35 @@ export function ChatHeader() {
     setMinimized(false);
   };
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
+    if (isLoading || !isAccountReady || !accountId) return;
     if (isConfirmingClear) {
-      clearMessages();
-      setIsConfirmingClear(false);
+      const requestEpoch = accountEpoch;
+      try {
+        await clearConversation();
+        const current = useChatStore.getState();
+        if (
+          current.accountId !== accountId ||
+          current.accountEpoch !== requestEpoch ||
+          !current.isAccountReady
+        ) {
+          return;
+        }
+        toast.success("Chat cleared");
+        setIsConfirmingClear(false);
+      } catch (error) {
+        const current = useChatStore.getState();
+        if (
+          current.accountId === accountId &&
+          current.accountEpoch === requestEpoch &&
+          current.isAccountReady
+        ) {
+          toast.error("Unable to clear chat", {
+            description:
+              error instanceof Error ? error.message : "Please try again.",
+          });
+        }
+      }
     } else {
       setIsConfirmingClear(true);
       // Reset confirmation after 3 seconds
@@ -75,15 +105,27 @@ export function ChatHeader() {
   };
 
   const handleNewChat = async () => {
-    const res = await createChatSession();
-    if ("error" in res && res.error) return;
+    if (!isAccountReady || !accountId) return;
+    const requestEpoch = accountEpoch;
+    const res = await createChatSession({ accountId });
+    const current = useChatStore.getState();
+    if (
+      current.accountId !== accountId ||
+      current.accountEpoch !== requestEpoch ||
+      !current.isAccountReady
+    ) {
+      return;
+    }
+    if ("error" in res && res.error) {
+      toast.error("Unable to create chat", { description: res.error });
+      return;
+    }
     const s = res.data!;
     upsertSessionFromServer({
       id: s.id,
       title: s.title,
       createdAt: new Date(s.created_at),
       updatedAt: new Date(s.updated_at),
-      messages: [],
     });
     setCurrentSessionIdFromServer(s.id);
   };
@@ -116,8 +158,28 @@ export function ChatHeader() {
 
   const handleTitleSubmit = async () => {
     if (currentSession && editTitle.trim()) {
-      await updateChatSessionTitleAction(currentSession.id, editTitle.trim());
-      updateSessionTitle(currentSession.id, editTitle.trim());
+      const requestEpoch = accountEpoch;
+      const sessionId = currentSession.id;
+      const title = editTitle.trim();
+      const res = await updateChatSessionTitleAction(
+        sessionId,
+        title,
+        accountId
+      );
+      const current = useChatStore.getState();
+      if (
+        current.accountId !== accountId ||
+        current.accountEpoch !== requestEpoch ||
+        !current.isAccountReady
+      ) {
+        setIsEditingTitle(false);
+        return;
+      }
+      if ("error" in res && res.error) {
+        toast.error("Unable to rename chat", { description: res.error });
+      } else {
+        updateSessionTitle(sessionId, title);
+      }
     }
     setIsEditingTitle(false);
   };
@@ -277,6 +339,7 @@ export function ChatHeader() {
               <DropdownMenuItem
                 variant="destructive"
                 onClick={handleClearChat}
+                disabled={isLoading}
                 onSelect={(e) => {
                   if (!isConfirmingClear) {
                     e.preventDefault();
