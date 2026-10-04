@@ -23,7 +23,7 @@ The user message and pending assistant exist before generation starts. Provider 
 
 ## Migration and rollout
 
-Apply `supabase/migrations/20260906174341_durable_chat_turns.sql` before deploying this application version. It adds turn records, status/settings columns, active leaves, ownership policies and transactional functions. Existing flat histories are linked in chronological order. Existing branch data is preserved. No live database migration is performed by the test suite.
+Apply `supabase/migrations/20260906174341_durable_chat_turns.sql` before deploying this application version. It adds turn records, status/settings columns, active leaves, ownership policies and transactional functions. Existing flat histories are linked in chronological order. Existing branch data is preserved. Apply `supabase/migrations/20260906235033_restrict_chat_turn_rpc_access.sql` as well: hosted default privileges can grant anonymous execution directly, so revoking PUBLIC alone is insufficient. No live database migration is performed by the local test suite. See [rollout verification](../../docs/enhancements/chat-rollout-verification.md) for deployed evidence and remaining release checks.
 
 Legacy unscoped browser transcripts are discarded rather than assigned to whichever account next signs in. Account-specific browser storage contains only UI preferences and open tab IDs.
 

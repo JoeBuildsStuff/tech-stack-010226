@@ -88,9 +88,17 @@ before(async () => {
     "insert into tech_stack_2026.chat_messages(id,session_id,role,content) values ($1,$2,'user','legacy question'),($3,$2,'assistant','legacy answer')",
     [oldUser, legacySession, oldAssistant]
   );
+  // Match the hosted project: functions receive direct anon grants by default.
+  await db.exec("alter default privileges grant execute on functions to anon");
   await db.exec(
     readFileSync(
       "supabase/migrations/20260906174341_durable_chat_turns.sql",
+      "utf8"
+    )
+  );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/20260906235033_restrict_chat_turn_rpc_access.sql",
       "utf8"
     )
   );
@@ -368,5 +376,29 @@ test("RLS and RPCs reject other accounts and cross-session branch targets", asyn
     await assert.rejects(() => complete(turn), /not found/);
   } finally {
     await q("select set_config('request.jwt.claim.sub',$1,false)", [owner]);
+  }
+});
+
+test("turn RPCs deny direct anon grants while retaining authenticated access", async () => {
+  const functions = await q(`select p.proname, p.prosecdef,
+    has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+    has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_execute
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='tech_stack_2026' and p.proname in
+    ('begin_chat_turn','complete_chat_turn','fail_chat_turn','select_chat_branch','clear_chat_conversation')`);
+  assert.equal(functions.length, 5);
+  for (const fn of functions) {
+    assert.equal(fn.anon_execute, false, fn.proname);
+    assert.equal(fn.authenticated_execute, true, fn.proname);
+    assert.equal(fn.prosecdef, false, fn.proname);
+  }
+  await db.exec("set role anon");
+  try {
+    await assert.rejects(
+      () => rpc("clear_chat_conversation", [randomUUID()]),
+      /permission denied/
+    );
+  } finally {
+    await db.exec("set role authenticated");
   }
 });
