@@ -236,16 +236,21 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
     (message.attachments?.length ?? 0) > 0 ||
     Boolean(message.reasoning);
 
-  // The footer actions (copy/retry/edit/thumbs) act on the final text response,
-  // so they should only appear once there's actual content — not while a tool
-  // call is still running and the text hasn't streamed in yet.
+  // The footer actions (copy/retry/edit/thumbs) act on the final text response.
+  // For the user's own message they can show as soon as it exists. For the
+  // assistant, they should only appear once the answer is actually finished —
+  // not while it's still streaming in — so wait for a terminal status (or for
+  // the stream to have stopped mid-flight, which "interrupted" covers).
   const interrupted =
     !isLoading &&
     (message.status === "pending" || message.status === "streaming");
-  const hasActionableContent =
-    message.content.trim().length > 0 ||
-    Boolean(message.functionResult) ||
-    interrupted;
+  const hasActionableContent = isUser
+    ? message.content.trim().length > 0 || Boolean(message.functionResult)
+    : message.status === "completed" ||
+      message.status === "failed" ||
+      message.status === "cancelled" ||
+      interrupted ||
+      Boolean(message.functionResult);
 
   const handleEdit = () => {
     setIsEditing(true);

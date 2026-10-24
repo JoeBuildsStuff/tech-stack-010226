@@ -15,7 +15,7 @@ export interface ChatTransportOptions {
   history: ChatMessage[];
   context: PageContext | null;
   model: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh";
+  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
   webSearchEnabled: boolean;
   attachments: TransportAttachment[];
   clientPath: string;
@@ -26,7 +26,8 @@ export interface ChatTransportOptions {
 
 export function chatEndpoint(model: string) {
   if (model.startsWith("gpt-oss-120b")) return "/api/chat/cerebras";
-  if (model.startsWith("gpt-5")) return "/api/chat/openai";
+  if (model.startsWith("gpt-5") || model.startsWith("gpt-6"))
+    return "/api/chat/openai";
   if (model.startsWith("grok-")) return "/api/chat/xai";
   return "/api/chat/anthropic";
 }

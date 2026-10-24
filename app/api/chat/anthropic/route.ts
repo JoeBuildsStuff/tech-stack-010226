@@ -20,11 +20,14 @@ const anthropic = new Anthropic({
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
+type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
 interface ChatAPIRequest {
   message: string;
   context?: PageContext | null;
   messages?: ChatMessage[];
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   attachments?: Array<{
     file: File;
     name: string;
@@ -245,6 +248,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       const contextStr = formData.get("context") as string;
       const messagesStr = formData.get("messages") as string;
       const model = (formData.get("model") as string) || "";
+      const reasoningEffort =
+        ((formData.get("reasoning_effort") as string) || "") as
+          | ReasoningEffort
+          | "";
       const clientTz = ((formData.get("client_tz") as string) || "").trim();
       const clientOffset = (
         (formData.get("client_utc_offset") as string) || ""
@@ -293,6 +300,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         context,
         messages,
         model,
+        reasoningEffort: reasoningEffort || undefined,
         attachments,
         clientTz,
         clientOffset,
@@ -310,6 +318,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       context,
       messages = [],
       model,
+      reasoningEffort,
       attachments = [],
       clientTz = "",
       clientOffset = "",
@@ -337,6 +346,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         context: context || null,
         attachments,
         model,
+        reasoningEffort,
         clientTz,
         clientOffset,
         clientNowIso,
@@ -353,6 +363,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       context || null,
       attachments,
       model,
+      reasoningEffort,
       clientTz,
       clientOffset,
       clientNowIso,
@@ -409,6 +420,7 @@ async function getLLMResponse(
     size: number;
   }> = [],
   model?: string,
+  reasoningEffort?: ReasoningEffort,
   clientTz = "",
   clientOffset = "",
   clientNowIso = "",
@@ -551,11 +563,14 @@ User Navigation Context:
     signal?.throwIfAborted();
     const resp = await anthropic.messages.create(
       {
-        model: model || "claude-sonnet-5",
+        model: model || "claude-sonnet-5-5",
         max_tokens: 2048,
         system: systemPrompt,
         tools,
         messages: currentMessages,
+        ...(reasoningEffort
+          ? { output_config: { effort: reasoningEffort } }
+          : {}),
       },
       { signal }
     );
@@ -676,6 +691,7 @@ function streamLLMResponse({
   context,
   attachments = [],
   model,
+  reasoningEffort,
   clientTz = "",
   clientOffset = "",
   clientNowIso = "",
@@ -689,6 +705,7 @@ function streamLLMResponse({
   context: PageContext | null;
   attachments?: Array<{ file: File; name: string; type: string; size: number }>;
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   clientTz?: string;
   clientOffset?: string;
   clientNowIso?: string;
@@ -833,11 +850,14 @@ User Navigation Context:
           signal?.throwIfAborted();
           const stream = anthropic.messages.stream(
             {
-              model: model || "claude-sonnet-5",
+              model: model || "claude-sonnet-5-5",
               max_tokens: 2048,
               system: systemPrompt,
               tools,
               messages: currentMessages,
+              ...(reasoningEffort
+                ? { output_config: { effort: reasoningEffort } }
+                : {}),
             },
             { signal }
           );

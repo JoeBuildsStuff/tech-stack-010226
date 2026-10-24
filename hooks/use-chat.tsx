@@ -30,7 +30,13 @@ import {
 interface UseChatProps {
   onActionClick?: (action: ChatAction) => void;
 }
-type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+type ReasoningEffort =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 type AccountSnapshot = { accountId: string; accountEpoch: number };
 const loadVersions = new Map<string, number>();
 
@@ -229,6 +235,23 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
         ? structuredClone(initial.currentContext)
         : null;
       const clientPath = window.location.pathname;
+      // Render the user's message right away, before the server has
+      // acknowledged the turn, so it never appears after the loading spinner.
+      if (input.mode === "new") {
+        initial.setOptimisticMessage({
+          id: "__optimistic__",
+          role: "user",
+          content: input.content,
+          timestamp: new Date(),
+          status: "completed",
+          attachments: (input.attachments || []).map((attachment) => ({
+            id: attachment.id,
+            name: attachment.name,
+            size: attachment.size,
+            type: attachment.type,
+          })),
+        });
+      }
       let begun:
         | { sessionId: string; turnId: string; assistantMessageId: string }
         | undefined;
@@ -291,7 +314,7 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
             attachments,
             context: context as Json,
             model:
-              input.mode === "new" ? input.model || "gpt-5.6-terra" : undefined,
+              input.mode === "new" ? input.model || "gpt-6-astra" : undefined,
             settings:
               input.mode === "new"
                 ? {
@@ -315,6 +338,7 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
           status: "pending",
         };
         initial.setMessagesForSession(sessionId, [...history, user, assistant]);
+        initial.setOptimisticMessage(null);
         let content = "";
         const toolCalls: StreamToolCall[] = [];
         const update = (updates: Partial<ChatMessage>) => {
@@ -330,7 +354,7 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
           history,
           context,
           clientPath,
-          model: turn.model || "gpt-5.6-terra",
+          model: turn.model || "gpt-6-astra",
           reasoningEffort: turn.settings?.reasoningEffort as
             | ReasoningEffort
             | undefined,
@@ -417,6 +441,8 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
         if (!signal.aborted && accountIsCurrent(account)) throw error;
       } finally {
         releaseChatRequest(request);
+        if (useChatStore.getState().optimisticMessage?.id === "__optimistic__")
+          initial.setOptimisticMessage(null);
         if (accountIsCurrent(account)) {
           initial.finishRequest(request.sessionId, requestId);
           initial.finishRequest(reservation, requestId);

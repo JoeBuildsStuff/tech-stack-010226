@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useRef, KeyboardEvent } from "react";
-import { FileImage, Globe, ArrowUp, Square, Paperclip } from "lucide-react";
+import {
+  FileImage,
+  Globe,
+  ArrowUp,
+  Square,
+  Paperclip,
+  ChevronDown,
+} from "lucide-react";
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,15 +18,19 @@ import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { AttachmentGroup } from "@/components/ui/attachment";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -39,26 +50,26 @@ export interface Attachment extends ChatAttachmentLike {
 
 const MODEL_OPTIONS = [
   {
-    value: "claude-haiku-4-5",
-    label: "Haiku 4.5",
-    cost: "$1 / $5",
+    value: "claude-haiku-5-5",
+    label: "Haiku 5.5",
+    cost: "$0.10 / $0.50",
     provider: "Anthropic",
   },
   {
-    value: "claude-sonnet-5",
-    label: "Sonnet 5",
+    value: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
     cost: "$2 / $10",
     provider: "Anthropic",
   },
   {
-    value: "claude-opus-4-8",
-    label: "Opus 4.8",
-    cost: "$5 / $25",
+    value: "claude-opus-5-5",
+    label: "Opus 5.5",
+    cost: "$4 / $20",
     provider: "Anthropic",
   },
   {
-    value: "claude-fable-5",
-    label: "Fable 5",
+    value: "claude-fable-5-1",
+    label: "Fable 5.1",
     cost: "$10 / $50",
     provider: "Anthropic",
   },
@@ -69,33 +80,21 @@ const MODEL_OPTIONS = [
     provider: "Cerebras",
   },
   {
-    value: "gpt-5.6-sol",
-    label: "GPT-5.6 Sol",
-    cost: "$5 / $30",
+    value: "gpt-6.1-sol",
+    label: "GPT-6.1 Sol",
+    cost: "$2 / $10",
     provider: "OpenAI",
   },
   {
-    value: "gpt-5.6-terra",
-    label: "GPT-5.6 Terra",
-    cost: "$2.50 / $15",
+    value: "gpt-6-astra",
+    label: "GPT-6 Astra",
+    cost: "$10 / $50",
     provider: "OpenAI",
   },
   {
-    value: "gpt-5.6-luna",
-    label: "GPT-5.6 Luna",
-    cost: "$1 / $6",
-    provider: "OpenAI",
-  },
-  {
-    value: "gpt-5.4-mini",
-    label: "GPT-5.4 Mini",
-    cost: "$0.75 / $4.50",
-    provider: "OpenAI",
-  },
-  {
-    value: "gpt-5.4-nano",
-    label: "GPT-5.4 Nano",
-    cost: "$0.20 / $1.25",
+    value: "gpt-6-luna",
+    label: "GPT-6 Luna",
+    cost: "$0.10 / $0.50",
     provider: "OpenAI",
   },
   {
@@ -110,21 +109,15 @@ const MODEL_GROUPS = [
   {
     provider: "Anthropic",
     options: [
-      "claude-fable-5",
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-haiku-4-5",
+      "claude-fable-5-1",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
     ],
   },
   {
     provider: "OpenAI",
-    options: [
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "gpt-5.4-mini",
-      "gpt-5.4-nano",
-    ],
+    options: ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
   },
   {
     provider: "xAI",
@@ -140,7 +133,7 @@ const MODEL_OPTIONS_BY_VALUE = new Map(
   MODEL_OPTIONS.map((option) => [option.value, option])
 );
 
-type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const OPENAI_REASONING_OPTIONS: Array<{
   value: ReasoningEffort;
@@ -153,6 +146,17 @@ const OPENAI_REASONING_OPTIONS: Array<{
   { value: "xhigh", label: "XHigh" },
 ];
 
+const ANTHROPIC_REASONING_OPTIONS: Array<{
+  value: ReasoningEffort;
+  label: string;
+}> = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
+  { value: "max", label: "Max" },
+];
+
 const CEREBRAS_REASONING_OPTIONS = OPENAI_REASONING_OPTIONS.filter(
   (option) =>
     option.value === "low" ||
@@ -161,6 +165,23 @@ const CEREBRAS_REASONING_OPTIONS = OPENAI_REASONING_OPTIONS.filter(
 );
 
 const XAI_REASONING_OPTIONS = CEREBRAS_REASONING_OPTIONS;
+
+// Effort the Claude API defaults to per model when none is set explicitly.
+const ANTHROPIC_DEFAULT_EFFORT: Record<string, ReasoningEffort> = {
+  "claude-opus-5-5": "medium",
+  "claude-sonnet-5-5": "high",
+  "claude-haiku-5-5": "medium",
+  "claude-fable-5-1": "high",
+};
+
+const MODEL_DEFAULT_EFFORT: Record<string, ReasoningEffort> = {
+  ...ANTHROPIC_DEFAULT_EFFORT,
+  "gpt-6-astra": "medium",
+  "gpt-6.1-sol": "medium",
+  "gpt-6-luna": "medium",
+  "gpt-oss-120b": "low",
+  "grok-4.5": "high",
+};
 
 export function ChatInput() {
   const [input, setInput] = useState("");
@@ -172,38 +193,34 @@ export function ChatInput() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, stopMessage } = useChat();
   const { isLoading, layoutMode } = useChatStore();
-  const [selectedModel, setSelectedModel] = useState("gpt-5.6-terra");
+  const [selectedModel, setSelectedModel] = useState("gpt-6-astra");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
-  const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort>("low");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
+    MODEL_DEFAULT_EFFORT["gpt-6-astra"] ?? "medium"
+  );
   const isCerebrasModel = selectedModel.startsWith("gpt-oss-120b");
-  const isOpenAIModel = selectedModel.startsWith("gpt-5");
+  const isOpenAIModel =
+    selectedModel.startsWith("gpt-6") || selectedModel.startsWith("gpt-5");
   const isXAIModel = selectedModel.startsWith("grok-");
-  const reasoningOptions = isOpenAIModel
-    ? OPENAI_REASONING_OPTIONS
-    : isXAIModel
-      ? XAI_REASONING_OPTIONS
-      : CEREBRAS_REASONING_OPTIONS;
+  const isAnthropicModel =
+    !isCerebrasModel && !isOpenAIModel && !isXAIModel;
+  const reasoningOptions = isAnthropicModel
+    ? ANTHROPIC_REASONING_OPTIONS
+    : isOpenAIModel
+      ? OPENAI_REASONING_OPTIONS
+      : isXAIModel
+        ? XAI_REASONING_OPTIONS
+        : CEREBRAS_REASONING_OPTIONS;
   const selectedModelLabel =
     MODEL_OPTIONS.find((option) => option.value === selectedModel)?.label ??
     "Model";
+  const selectedEffortLabel =
+    reasoningOptions.find((option) => option.value === reasoningEffort)
+      ?.label ?? "Medium";
 
   const handleModelChange = (model: string) => {
     setSelectedModel(model);
-
-    if (
-      model.startsWith("gpt-oss-120b") &&
-      (reasoningEffort === "none" || reasoningEffort === "xhigh")
-    ) {
-      setReasoningEffort("low");
-    }
-
-    if (
-      model.startsWith("grok-") &&
-      (reasoningEffort === "none" || reasoningEffort === "xhigh")
-    ) {
-      setReasoningEffort("high");
-    }
+    setReasoningEffort(MODEL_DEFAULT_EFFORT[model] ?? "medium");
   };
 
   const handleSend = async () => {
@@ -225,26 +242,13 @@ export function ChatInput() {
     }
 
     try {
-      // Determine which API to use based on model selection
-      if (isCerebrasModel || isOpenAIModel || isXAIModel) {
-        // Use Cerebras, OpenAI, or xAI API with reasoning effort
-        await sendMessage(
-          messageContent,
-          currentAttachments,
-          selectedModel,
-          reasoningEffort,
-          { webSearchEnabled }
-        );
-      } else {
-        // Use regular chat API (Anthropic)
-        await sendMessage(
-          messageContent,
-          currentAttachments,
-          selectedModel,
-          undefined,
-          { webSearchEnabled }
-        );
-      }
+      await sendMessage(
+        messageContent,
+        currentAttachments,
+        selectedModel,
+        reasoningEffort,
+        { webSearchEnabled }
+      );
     } catch (error) {
       const current = useChatStore.getState();
       if (
@@ -480,42 +484,45 @@ export function ChatInput() {
 
             {/* Right side buttons */}
             <div className="flex gap-2 items-center">
-              <Select
-                value={selectedModel}
-                onValueChange={handleModelChange}
-                disabled={isLoading}
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="w-fit border-none text-muted-foreground shadow-none font-light text-xs bg-input/40"
-                >
-                  <SelectValue placeholder="Model">
-                    {selectedModelLabel}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isLoading}
+                    className="w-fit gap-1.5 rounded-full border-none bg-input/40 font-light text-xs text-muted-foreground shadow-none"
+                  >
+                    <span className="text-foreground">
+                      {selectedModelLabel}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {selectedEffortLabel}
+                    </span>
+                    <ChevronDown className="size-3.5 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
                   side="top"
                   align="end"
                   sideOffset={8}
-                  className="w-72 font-light text-xs"
+                  className="w-56 font-light text-xs"
                 >
                   {MODEL_GROUPS.map((group, groupIndex) => (
-                    <SelectGroup key={group.provider}>
-                      {groupIndex > 0 && <SelectSeparator />}
-                      <SelectLabel className="px-2 py-1 text-[11px] font-medium uppercase tracking-normal">
+                    <DropdownMenuGroup key={group.provider}>
+                      {groupIndex > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="px-2 py-1 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
                         {group.provider}
-                      </SelectLabel>
+                      </DropdownMenuLabel>
                       {group.options.map((value) => {
                         const option = MODEL_OPTIONS_BY_VALUE.get(value);
 
                         if (!option) return null;
 
                         return (
-                          <SelectItem
+                          <DropdownMenuItem
                             key={option.value}
-                            value={option.value}
-                            indicatorPosition="left"
+                            onSelect={() => handleModelChange(option.value)}
                             className="font-light text-xs"
                           >
                             <span className="flex w-full items-center justify-between gap-4">
@@ -526,48 +533,42 @@ export function ChatInput() {
                                 </span>
                               )}
                             </span>
-                          </SelectItem>
+                          </DropdownMenuItem>
                         );
                       })}
-                    </SelectGroup>
+                    </DropdownMenuGroup>
                   ))}
-                </SelectContent>
-              </Select>
 
-              {/* Reasoning Effort Selector (show for Cerebras, OpenAI, and xAI models) */}
-              {(isCerebrasModel || isOpenAIModel || isXAIModel) && (
-                <Select
-                  value={reasoningEffort}
-                  onValueChange={(value) =>
-                    setReasoningEffort(value as ReasoningEffort)
-                  }
-                  disabled={isLoading}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="w-fit border-none text-muted-foreground shadow-none font-light text-xs bg-input/40"
-                  >
-                    <SelectValue placeholder="Reasoning" />
-                  </SelectTrigger>
-                  <SelectContent
-                    position="popper"
-                    side="top"
-                    align="end"
-                    sideOffset={8}
-                    className="font-light text-xs"
-                  >
-                    {reasoningOptions.map((option) => (
-                      <SelectItem
-                        key={option.value}
-                        value={option.value}
-                        className="font-light text-xs"
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="font-light text-xs [&>svg]:!ml-0">
+                      Effort
+                      <span className="ml-auto text-muted-foreground">
+                        {selectedEffortLabel}
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="font-light text-xs">
+                      <DropdownMenuRadioGroup
+                        value={reasoningEffort}
+                        onValueChange={(value) =>
+                          setReasoningEffort(value as ReasoningEffort)
+                        }
                       >
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+                        {reasoningOptions.map((option) => (
+                          <DropdownMenuRadioItem
+                            key={option.value}
+                            value={option.value}
+                            className="font-light text-xs"
+                          >
+                            {option.label}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Send button */}
               <Button

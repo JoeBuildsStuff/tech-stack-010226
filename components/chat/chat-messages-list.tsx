@@ -14,13 +14,18 @@ interface ChatMessagesListProps {
 export function ChatMessagesList({
   onActionClick,
 }: ChatMessagesListProps = {}) {
-  const { messages, isLoading } = useChatStore();
+  const { messages, isLoading, optimisticMessage } = useChatStore();
   const lastMessage = messages[messages.length - 1];
   const shouldShowLoading =
     isLoading &&
     !(lastMessage?.role === "assistant" && lastMessage.content.trim());
+  // The optimistic message is superseded once the real turn lands (it shares
+  // no id with any persisted message), so only show it while nothing newer
+  // has arrived for this send.
+  const showOptimisticMessage =
+    Boolean(optimisticMessage) && lastMessage?.id !== optimisticMessage?.id;
 
-  if (messages.length === 0 && !isLoading) {
+  if (messages.length === 0 && !isLoading && !showOptimisticMessage) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-2">
@@ -59,6 +64,13 @@ export function ChatMessagesList({
           ))}
         </MessageGroup>
       ))}
+
+      {/* Show the just-sent message immediately, before the server round trip */}
+      {showOptimisticMessage && optimisticMessage && (
+        <MessageScrollerItem key={optimisticMessage.id}>
+          <ChatMessage message={optimisticMessage} onActionClick={onActionClick} />
+        </MessageScrollerItem>
+      )}
 
       {/* Show loading placeholder while waiting for API response */}
       {shouldShowLoading && (

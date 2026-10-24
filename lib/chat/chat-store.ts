@@ -120,6 +120,12 @@ interface ChatStore {
   layoutMode: "floating" | "inset" | "fullpage";
   lastNonFullpageLayout: "floating" | "inset";
   openSessionIds: string[];
+  /**
+   * A just-sent user message rendered immediately, before the server has
+   * acknowledged the turn and the real message lands in `messages`. Avoids a
+   * gap where the loading spinner appears without the message that caused it.
+   */
+  optimisticMessage: ChatMessage | null;
 
   // Computed properties (will be updated whenever state changes)
   currentSession: ChatSession | null;
@@ -176,6 +182,8 @@ interface ChatStore {
     toolCallId: string,
     result: { success: boolean; data?: unknown; error?: string }
   ) => void;
+
+  setOptimisticMessage: (message: ChatMessage | null) => void;
 
   // UI State
   setOpen: (open: boolean) => void;
@@ -289,6 +297,9 @@ export const useChatStore = create<ChatStore>()(
       layoutMode: "floating",
       lastNonFullpageLayout: "floating",
       openSessionIds: [],
+      optimisticMessage: null,
+
+      setOptimisticMessage: (message) => set({ optimisticMessage: message }),
 
       setAccountPending: () => {
         abortAllChatRequests();
@@ -308,6 +319,7 @@ export const useChatStore = create<ChatStore>()(
           isMinimized: false,
           isMaximized: false,
           showHistory: false,
+          optimisticMessage: null,
         });
       },
 
@@ -343,6 +355,7 @@ export const useChatStore = create<ChatStore>()(
           isMinimized: false,
           isMaximized: false,
           showHistory: false,
+          optimisticMessage: null,
         }));
       },
 
@@ -859,6 +872,10 @@ export const useChatStore = create<ChatStore>()(
               state.loadingBySession,
               state.currentSessionId
             ),
+            optimisticMessage:
+              sessionId === state.currentSessionId
+                ? null
+                : state.optimisticMessage,
           };
         });
       },
@@ -1160,6 +1177,7 @@ export const useChatStore = create<ChatStore>()(
         state.isLoading = false;
         state.isHydrated = true;
         state.isAccountReady = false;
+        state.optimisticMessage = null;
       },
     }
   )

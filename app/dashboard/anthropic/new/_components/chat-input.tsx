@@ -220,7 +220,7 @@ export function ChatInput({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <InputGroupButton variant="ghost" size="sm">
-                  Opus 4.6{" "}
+                  Opus 5.5{" "}
                   <ChevronDown className="size-4 text-muted-foreground ml-auto" />
                 </InputGroupButton>
               </DropdownMenuTrigger>
@@ -231,9 +231,9 @@ export function ChatInput({
               >
                 <DropdownMenuItem className="flex flex-row items-center">
                   <div className="flex flex-col items-start gap-1">
-                    <span className="text-sm">Opus 4.6</span>
+                    <span className="text-sm">Opus 5.5</span>
                     <span className="text-xs text-muted-foreground">
-                      Most capable for complex work
+                      Long-running agentic coding and knowledge work
                     </span>
                   </div>
                   {/* Check icon twice, vertically centered in the middle */}
@@ -242,24 +242,25 @@ export function ChatInput({
                   </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="flex flex-col gap-1 items-start">
-                  <span className="text-sm">Sonnet 4.6</span>
+                  <span className="text-sm">Sonnet 5.5</span>
                   <span className="text-xs text-muted-foreground">
-                    Best for everyday tasks
+                    Best combination of speed and intelligence
                   </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="flex flex-col gap-1 items-start">
-                  <span className="text-sm">Haiku 4.5</span>
+                  <span className="text-sm">Haiku 5.5</span>
                   <span className="text-xs text-muted-foreground">
-                    Fastest for quick answers
+                    Fastest for high-volume, latency-sensitive tasks
                   </span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="mx-1 my-2" />
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
                   More models
                 </DropdownMenuLabel>
-                <DropdownMenuItem>claude-opus-4-6</DropdownMenuItem>
-                <DropdownMenuItem>claude-sonnet-4-6</DropdownMenuItem>
-                <DropdownMenuItem>claude-haiku-4-5</DropdownMenuItem>
+                <DropdownMenuItem>claude-fable-5-1</DropdownMenuItem>
+                <DropdownMenuItem>claude-opus-5-5</DropdownMenuItem>
+                <DropdownMenuItem>claude-sonnet-5-5</DropdownMenuItem>
+                <DropdownMenuItem>claude-haiku-5-5</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <InputGroupButton
