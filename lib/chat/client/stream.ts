@@ -37,6 +37,7 @@ export interface StreamToolCall {
 }
 
 export interface ChatStreamHandlers {
+  onReasoning?: (delta: string) => void;
   onToolCall?: (toolCall: StreamToolCall) => void;
   onToolResult?: (toolResult: {
     id: string;
@@ -77,6 +78,8 @@ export async function readChatStream(
 
     if (event === "delta" && typeof payload.delta === "string") {
       onDelta(payload.delta);
+    } else if (event === "reasoning" && typeof payload.delta === "string") {
+      handlers?.onReasoning?.(payload.delta);
     } else if (event === "tool_call" && handlers?.onToolCall) {
       handlers.onToolCall(payload as unknown as StreamToolCall);
     } else if (event === "tool_result" && handlers?.onToolResult) {

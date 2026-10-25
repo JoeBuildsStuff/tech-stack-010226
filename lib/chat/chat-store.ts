@@ -17,8 +17,23 @@ export interface ToolCall {
   reasoning?: string; // Reasoning associated with this specific tool call
 }
 
+/**
+ * One step of an assistant reply, in the order it streamed. Thinking parts
+ * carry their own timing so the UI can say "Thought 3s" even when the model
+ * exposes no reasoning text.
+ */
+export type ChatMessagePart =
+  | { type: "thinking"; text: string; startedAt: number; endedAt?: number }
+  | { type: "text"; text: string }
+  | { type: "tool"; toolCall: ToolCall };
+
 export interface ChatMessage {
   id: string;
+  /** Ordered steps of the reply; absent for messages loaded only from the DB. */
+  parts?: ChatMessagePart[];
+  /** Epoch ms when the reply started / finished streaming ("Worked for Ns"). */
+  startedAt?: number;
+  finishedAt?: number;
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;

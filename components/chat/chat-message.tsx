@@ -1,7 +1,6 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Lightbulb } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -24,25 +23,12 @@ import {
   MessageFooter,
 } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
-import {
-  ToolCall,
-  ToolCallTrigger,
-  ToolCallContent,
-  ToolCallPanel,
-  ToolCallPanelTrigger,
-  ToolCallPanelContent,
-  ToolCallCode,
-} from "@/components/ui/tool-call";
+import { ChatMessageTrace } from "./chat-message-trace";
+import { derivePartsFromMessage } from "@/lib/chat/client/message-parts";
 import { toast } from "sonner";
-import {
-  formatToolCallArguments,
-  formatToolCallResult,
-} from "@/lib/chat/utils";
 import { useState } from "react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
-import Spinner from "@/components/ui/spinner";
 import { ChatAttachmentCard } from "@/components/chat/chat-attachment-card";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
 import type { ChatAttachmentLike } from "@/lib/chat/attachments";
@@ -100,59 +86,14 @@ const CitationPopover = ({
   );
 };
 
-// Reasoning component
-const ReasoningDisplay = ({ reasoning }: { reasoning: string }) => {
-  return (
-    <Bubble className="mb-2 w-72 overflow-hidden rounded-lg bg-muted/40">
-      <Marker className="gap-2 px-3 pt-2 pb-1 text-muted-foreground">
-        <MarkerIcon>
-          <Lightbulb className="size-3.5 shrink-0" strokeWidth={1.5} />
-        </MarkerIcon>
-        <MarkerContent className="text-xs font-medium">Reasoning</MarkerContent>
-      </Marker>
-      <BubbleContent className="px-3 pb-2 text-sm break-words">
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeHighlight]}
-            components={{
-              code: ({ children, ...props }) => {
-                const isInline = !props.className?.includes("language-");
-                return isInline ? (
-                  <code
-                    className={cn(
-                      "px-1.5 py-0.5 rounded text-xs font-mono border",
-                      "bg-muted/60 border-muted-foreground/20"
-                    )}
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                ) : (
-                  <code className="text-xs font-mono" {...props}>
-                    {children}
-                  </code>
-                );
-              },
-              pre: ({ children }) => (
-                <pre
-                  className={cn(
-                    "p-3 rounded-md overflow-x-auto my-2 border text-xs",
-                    "bg-muted/60 border-muted-foreground/20"
-                  )}
-                >
-                  {children}
-                </pre>
-              ),
-            }}
-          >
-            {reasoning}
-          </ReactMarkdown>
-        </div>
-      </BubbleContent>
-    </Bubble>
-  );
-};
+/**
+ * While streaming, a link arrives a few characters at a time; until it closes,
+ * show its label instead of raw `[label](http` syntax.
+ */
+const stabilizeStreamingMarkdown = (text: string) =>
+  text
+    .replace(/\[([^\]\n]*)\]\([^)\n]*$/, "$1")
+    .replace(/\[([^\]\n]*)$/, "$1");
 
 // Function to render text with inline citations
 const renderTextWithCitations = (
@@ -199,18 +140,87 @@ const renderTextWithCitations = (
   return parts.length > 1 ? <>{parts}</> : text;
 };
 
-// Loading placeholder component
+function MessageMarkdown({
+  text,
+  citations,
+}: {
+  text: string;
+  citations: Array<{ url: string; title: string; cited_text: string }>;
+}) {
+  return (
+    <div className={cn("prose prose-sm max-w-none", "dark:prose-invert")}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={{
+          // Only override what's absolutely necessary
+          code: ({ children, ...props }) => {
+            const isInline = !props.className?.includes("language-");
+            return isInline ? (
+              <code
+                className={cn(
+                  "px-1.5 py-0.5 rounded text-xs font-mono border",
+                  "bg-muted/60 border-muted-foreground/20"
+                )}
+                {...props}
+              >
+                {children}
+              </code>
+            ) : (
+              <code className="text-xs font-mono" {...props}>
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => (
+            <pre
+              className={cn(
+                "p-3 rounded-md overflow-x-auto my-2 border text-xs",
+                "bg-muted/60 border-muted-foreground/20"
+              )}
+            >
+              {children}
+            </pre>
+          ),
+          // Custom text renderer to handle inline citations
+          p: ({ children }) => (
+            <p>
+              {typeof children === "string"
+                ? renderTextWithCitations(children, citations)
+                : children}
+            </p>
+          ),
+          // Handle list items to process citations within them
+          li: ({ children }) => (
+            <li>
+              {typeof children === "string"
+                ? renderTextWithCitations(children, citations)
+                : children}
+            </li>
+          ),
+          // Also handle text nodes that aren't in paragraphs
+          text: ({ children }) =>
+            typeof children === "string"
+              ? renderTextWithCitations(children, citations)
+              : children,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+// Loading placeholder shown before the assistant message exists
 export function ChatMessageLoading() {
   return (
     <Message align="start" className="px-0 py-2">
       <MessageContent>
-        {/* Loading message bubble */}
-        <Bubble>
-          <BubbleContent className="rounded-lg px-3 py-2 text-sm bg-muted flex items-center gap-2">
-            <Spinner className="stroke-5 size-4 stroke-muted-foreground" />
-            {/* <span className="text-muted-foreground">Thinking...</span> */}
-          </BubbleContent>
-        </Bubble>
+        <p className="px-3 text-sm font-light">
+          <span className="text-shimmer motion-reduce:animate-none">
+            Planning next moves
+          </span>
+        </p>
       </MessageContent>
     </Message>
   );
@@ -243,6 +253,9 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   // the stream to have stopped mid-flight, which "interrupted" covers).
   const interrupted =
     !isLoading &&
+    (message.status === "pending" || message.status === "streaming");
+  const isStreaming =
+    isLoading &&
     (message.status === "pending" || message.status === "streaming");
   const hasActionableContent = isUser
     ? message.content.trim().length > 0 || Boolean(message.functionResult)
@@ -330,8 +343,8 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
     <>
       <Message align={isUser ? "end" : "start"} className="px-0 py-2">
         <MessageContent className={cn("gap-1", isUser && "items-end")}>
-          {/* Timestamp */}
-          {hasRenderableBody && (
+          {/* Timestamp - the assistant's sits in its footer, after the answer */}
+          {isUser && hasRenderableBody && (
             <MessageHeader className={cn("px-1", isUser && "justify-end")}>
               <span className="text-xs text-muted-foreground">
                 {formatDistanceToNow(message.timestamp, { addSuffix: true })}
@@ -353,9 +366,25 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
             </AttachmentGroup>
           )}
 
-          {/* Reasoning - shown before tool calls and content for non-system messages */}
-          {message.reasoning && (
-            <ReasoningDisplay reasoning={message.reasoning} />
+          {!isUser && (
+            <ChatMessageTrace
+              parts={derivePartsFromMessage(message)}
+              streaming={isStreaming}
+              startedAt={message.startedAt}
+              finishedAt={message.finishedAt}
+              renderText={(text, key, isLast) => (
+                <div key={key} className="px-1 text-sm font-normal text-foreground break-words">
+                  <MessageMarkdown
+                    text={
+                      isStreaming && isLast
+                        ? stabilizeStreamingMarkdown(text)
+                        : text
+                    }
+                    citations={message.citations || []}
+                  />
+                </div>
+              )}
+            />
           )}
 
           {interrupted && (
@@ -375,70 +404,6 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
                 ? "Response failed"
                 : "Response stopped"}
             </Badge>
-          )}
-
-          {/* Tool calls with individual reasoning - shown before the response for non-system messages */}
-          {message.toolCalls && message.toolCalls.length > 0 && (
-            <div className="space-y-2 mb-2 w-72">
-              {message.toolCalls.map((toolCall) => (
-                <div key={toolCall.id} className="space-y-2">
-                  {/* Reasoning for this specific tool call */}
-                  {toolCall.reasoning && (
-                    <ReasoningDisplay reasoning={toolCall.reasoning} />
-                  )}
-
-                  {/* Tool call */}
-                  <ToolCall>
-                    <ToolCallTrigger>
-                      <Marker className="gap-2">
-                        <MarkerIcon>
-                          {toolCall.result ? (
-                            <Lightbulb
-                              className="size-4 shrink-0"
-                              strokeWidth={1.5}
-                            />
-                          ) : (
-                            <Spinner className="size-4 shrink-0 stroke-current" />
-                          )}
-                        </MarkerIcon>
-                        <MarkerContent className="text-sm">
-                          {toolCall.result
-                            ? toolCall.name
-                            : `Running ${toolCall.name}…`}
-                        </MarkerContent>
-                      </Marker>
-                    </ToolCallTrigger>
-                    <ToolCallContent>
-                      {/* Tool Arguments - independently collapsible */}
-                      <ToolCallPanel>
-                        <ToolCallPanelTrigger>Request</ToolCallPanelTrigger>
-                        <ToolCallPanelContent>
-                          <ToolCallCode
-                            value={formatToolCallArguments(toolCall.arguments)}
-                            copyLabel="Arguments copied to clipboard"
-                          />
-                        </ToolCallPanelContent>
-                      </ToolCallPanel>
-                      {/* Tool Result - independently collapsible */}
-                      {toolCall.result && (
-                        <ToolCallPanel>
-                          <ToolCallPanelTrigger>
-                            Result:{" "}
-                            {toolCall.result.success ? "Success" : "Error"}
-                          </ToolCallPanelTrigger>
-                          <ToolCallPanelContent>
-                            <ToolCallCode
-                              value={formatToolCallResult(toolCall.result)}
-                              copyLabel="Result copied to clipboard"
-                            />
-                          </ToolCallPanelContent>
-                        </ToolCallPanel>
-                      )}
-                    </ToolCallContent>
-                  </ToolCall>
-                </div>
-              ))}
-            </div>
           )}
 
           {/* Message bubble or editing textarea */}
@@ -468,97 +433,13 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
               </BubbleContent>
             </Bubble>
           ) : // Only render message bubble if there's content
-          message.content.trim() ? (
-            <Bubble align={isUser ? "end" : "start"}>
-              <BubbleContent
-                className={cn(
-                  "rounded-lg px-3 py-2 text-sm break-words",
-                  isUser ? "bg-muted" : "text-foreground"
-                )}
-              >
-                <div
-                  className={cn(
-                    "prose prose-sm max-w-none",
-                    "dark:prose-invert"
-                  )}
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeHighlight]}
-                    components={{
-                      // Only override what's absolutely necessary
-                      code: ({ children, ...props }) => {
-                        const isInline =
-                          !props.className?.includes("language-");
-                        return isInline ? (
-                          <code
-                            className={cn(
-                              "px-1.5 py-0.5 rounded text-xs font-mono border",
-                              "bg-muted/60 border-muted-foreground/20"
-                            )}
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        ) : (
-                          <code className="text-xs font-mono" {...props}>
-                            {children}
-                          </code>
-                        );
-                      },
-                      pre: ({ children }) => (
-                        <pre
-                          className={cn(
-                            "p-3 rounded-md overflow-x-auto my-2 border text-xs",
-                            "bg-muted/60 border-muted-foreground/20"
-                          )}
-                        >
-                          {children}
-                        </pre>
-                      ),
-                      // Custom text renderer to handle inline citations
-                      p: ({ children }) => {
-                        if (typeof children === "string") {
-                          return (
-                            <p>
-                              {renderTextWithCitations(
-                                children,
-                                message.citations || []
-                              )}
-                            </p>
-                          );
-                        }
-                        return <p>{children}</p>;
-                      },
-                      // Handle list items to process citations within them
-                      li: ({ children }) => {
-                        if (typeof children === "string") {
-                          return (
-                            <li>
-                              {renderTextWithCitations(
-                                children,
-                                message.citations || []
-                              )}
-                            </li>
-                          );
-                        }
-                        return <li>{children}</li>;
-                      },
-                      // Also handle text nodes that aren't in paragraphs
-                      text: ({ children }) => {
-                        if (typeof children === "string") {
-                          return renderTextWithCitations(
-                            children,
-                            message.citations || []
-                          );
-                        }
-                        return children;
-                      },
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
+          isUser && message.content.trim() ? (
+            <Bubble align="end">
+              <BubbleContent className="rounded-lg px-3 py-2 text-sm break-words bg-muted">
+                <MessageMarkdown
+                  text={message.content}
+                  citations={message.citations || []}
+                />
               </BubbleContent>
             </Bubble>
           ) : null}
@@ -569,17 +450,10 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
               {!isEditing && (
                 <ChatMessageActions message={message} onEdit={handleEdit} />
               )}
-
-              {/* Function result indicator */}
-              {message.functionResult && (
-                <Badge
-                  variant={message.functionResult.success ? "green" : "red"}
-                  className="mt-1"
-                >
-                  {message.functionResult.success
-                    ? "✓ Action completed"
-                    : "✗ Action failed"}
-                </Badge>
+              {!isUser && (
+                <span className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(message.timestamp, { addSuffix: true })}
+                </span>
               )}
             </MessageFooter>
           )}

@@ -16,9 +16,8 @@ export function ChatMessagesList({
 }: ChatMessagesListProps = {}) {
   const { messages, isLoading, optimisticMessage } = useChatStore();
   const lastMessage = messages[messages.length - 1];
-  const shouldShowLoading =
-    isLoading &&
-    !(lastMessage?.role === "assistant" && lastMessage.content.trim());
+  // Once the assistant placeholder exists it renders its own live status.
+  const shouldShowLoading = isLoading && lastMessage?.role !== "assistant";
   // The optimistic message is superseded once the real turn lands (it shares
   // no id with any persisted message), so only show it while nothing newer
   // has arrived for this send.

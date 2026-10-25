@@ -21,6 +21,12 @@ import type {
 import { sendChatRequest } from "@/lib/chat/client/transport";
 import type { StreamToolCall } from "@/lib/chat/client/stream";
 import {
+  createPartsBuilder,
+  joinTextParts,
+  rememberStreamedShape,
+  withStreamedShape,
+} from "@/lib/chat/client/message-parts";
+import {
   abortChatRequest,
   registerChatRequest,
   releaseChatRequest,
@@ -64,7 +70,7 @@ function unwrap<T>(result: { data?: T; error?: string }): T {
 }
 
 export function toChatMessage(message: PersistedChatMessage): ChatMessage {
-  return {
+  return withStreamedShape({
     id: message.id,
     role: message.role,
     content: message.content,
@@ -88,7 +94,7 @@ export function toChatMessage(message: PersistedChatMessage): ChatMessage {
       size: attachment.size,
       url: attachment.url || undefined,
     })),
-  };
+  });
 }
 
 function applyConversation(
@@ -329,6 +335,8 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
         signal.throwIfAborted();
         const history = turn.history.map(toChatMessage);
         const user = toChatMessage(turn.userMessage);
+        const parts = createPartsBuilder();
+        const startedAt = Date.now();
         const assistant: ChatMessage = {
           id: turn.assistantMessageId,
           role: "assistant",
@@ -336,6 +344,8 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
           timestamp: new Date(),
           parentId: user.id,
           status: "pending",
+          parts: parts.snapshot(),
+          startedAt,
         };
         initial.setMessagesForSession(sessionId, [...history, user, assistant]);
         initial.setOptimisticMessage(null);
@@ -346,7 +356,10 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
             accountIsCurrent(account) &&
             initial.isRequestCurrent(sessionId!, requestId)
           )
-            initial.updateMessageInSession(sessionId!, assistant.id, updates);
+            initial.updateMessageInSession(sessionId!, assistant.id, {
+              ...updates,
+              parts: parts.snapshot(),
+            });
         };
         const result = await sendChatRequest({
           accountId: account.accountId,
@@ -371,20 +384,40 @@ export function useChat({ onActionClick }: UseChatProps = {}) {
           })),
           signal,
           onDelta: (delta) => {
-            content += delta;
-            update({ content });
+            parts.text(delta);
+            content = joinTextParts(parts.snapshot());
+            update({ content, status: "streaming" });
           },
           handlers: {
+            onReasoning: (delta) => {
+              parts.reasoning(delta);
+              update({ status: "streaming" });
+            },
             onToolCall: (tool) => {
               toolCalls.push(tool);
-              update({ toolCalls: toolCalls.map((item) => ({ ...item })) });
+              parts.toolCall(tool);
+              update({
+                status: "streaming",
+                toolCalls: toolCalls.map((item) => ({ ...item })),
+              });
             },
             onToolResult: ({ id, result }) => {
               const tool = toolCalls.find((item) => item.id === id);
               if (tool) tool.result = result;
+              parts.toolResult(id, result);
               update({ toolCalls: toolCalls.map((item) => ({ ...item })) });
             },
           },
+        });
+        // Some replies only arrive in the final "done" payload (e.g. the
+        // server's "No response generated" fallback); never drop them.
+        if (!joinTextParts(parts.snapshot()) && result.message)
+          parts.text(result.message);
+        parts.finish();
+        rememberStreamedShape(assistant.id, {
+          parts: parts.snapshot(),
+          startedAt,
+          finishedAt: Date.now(),
         });
         assertAccount(account);
         signal.throwIfAborted();

@@ -509,7 +509,7 @@ async function runToolCalls({
   const toolSummaries: ToolCallSummary[] = [];
 
   const nextInput = await Promise.all(
-    toolCalls.map(async (toolCall) => {
+    toolCalls.map(async (toolCall, index) => {
       signal?.throwIfAborted();
       let parsedArgs: Record<string, unknown>;
       try {
@@ -531,14 +531,15 @@ async function runToolCalls({
         toolContext
       );
       signal?.throwIfAborted();
-      toolResults.push(functionResult);
+      // Indexed writes keep summaries in call order; parallel calls finish in any order.
+      toolResults[index] = functionResult;
 
-      toolSummaries.push({
+      toolSummaries[index] = {
         id: toolCall.id || toolCall.call_id,
         name: toolCall.name,
         arguments: augmentedArgs,
         result: functionResult,
-      });
+      };
 
       return {
         type: "function_call_output" as const,
@@ -595,7 +596,7 @@ async function getXAIResponse({
         webSearchEnabled,
       });
 
-    let maxIterations = 5;
+    let maxIterations = 8;
     let previousResponseId: string | undefined;
     let nextInput: ResponseInputItem[] = initialInput;
     let finalResponse: OpenAIResponse | null = null;
@@ -627,7 +628,9 @@ async function getXAIResponse({
             : { instructions: systemPrompt }),
           input: nextInput,
           tools: tools.length > 0 ? tools : undefined,
-          tool_choice: tools.length > 0 ? "auto" : undefined,
+          // Last allowed round: force a written answer instead of another tool call.
+          tool_choice:
+            tools.length > 0 ? (maxIterations === 1 ? "none" : "auto") : undefined,
           reasoning: { effort },
         },
         { signal }
@@ -748,7 +751,7 @@ function streamXAIResponse({
             webSearchEnabled,
           });
 
-        let maxIterations = 5;
+        let maxIterations = 8;
         let previousResponseId: string | undefined;
         let nextInput: ResponseInputItem[] = initialInput;
         let finalMessage = "";
@@ -772,7 +775,9 @@ function streamXAIResponse({
                 : { instructions: systemPrompt }),
               input: nextInput,
               tools: tools.length > 0 ? tools : undefined,
-              tool_choice: tools.length > 0 ? "auto" : undefined,
+              // Last allowed round: force a written answer instead of another tool call.
+              tool_choice:
+                tools.length > 0 ? (maxIterations === 1 ? "none" : "auto") : undefined,
               reasoning: { effort },
               stream: true,
             },
@@ -780,12 +785,23 @@ function streamXAIResponse({
           );
 
           const streamedToolCalls: ResponseFunctionToolCall[] = [];
+          // Text from separate rounds (preamble, then the answer after tools)
+          // must not run together as "results.Here are…".
+          let roundHasText = false;
 
           for await (const event of stream as AsyncIterable<StreamEvent>) {
             signal?.throwIfAborted();
             if (event.type === "response.output_text.delta" && event.delta) {
+              if (!roundHasText && finalMessage) finalMessage += "\n\n";
+              roundHasText = true;
               finalMessage += event.delta;
               send("delta", { delta: event.delta });
+            } else if (
+              (event.type === "response.reasoning_summary_text.delta" ||
+                event.type === "response.reasoning_text.delta") &&
+              typeof event.delta === "string"
+            ) {
+              send("reasoning", { delta: event.delta });
             } else if (
               event.type === "response.output_item.done" &&
               isResponseFunctionToolCall(event.item)
