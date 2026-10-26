@@ -1,28 +1,45 @@
 "use client";
 
+import { memo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/lib/chat/chat-store";
 import { ChatMessage, ChatMessageLoading } from "./chat-message";
 import { MessagesSquare } from "lucide-react";
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import { MessageGroup } from "@/components/ui/message";
-import type { ChatAction, ChatMessage as ChatMessageType } from "@/types/chat";
+import type { ChatAction } from "@/lib/chat/contracts";
 
 interface ChatMessagesListProps {
   onActionClick?: (action: ChatAction) => void;
 }
 
+/**
+ * Subscribes to message ids and roles only. A streamed token changes one
+ * message object, which re-renders that row and nothing else.
+ */
 export function ChatMessagesList({
   onActionClick,
 }: ChatMessagesListProps = {}) {
-  const { messages, isLoading, optimisticMessage } = useChatStore();
-  const lastMessage = messages[messages.length - 1];
+  const rows = useChatStore(
+    useShallow((state) =>
+      state.messages.map((message) => `${message.role}:${message.id}`)
+    )
+  );
+  const isLoading = useChatStore((state) => state.isLoading);
+  const optimisticId = useChatStore((state) => state.optimisticMessage?.id);
+
+  const messages = rows.map((row) => {
+    const separator = row.indexOf(":");
+    return { role: row.slice(0, separator), id: row.slice(separator + 1) };
+  });
+  const lastMessage = messages.at(-1);
   // Once the assistant placeholder exists it renders its own live status.
   const shouldShowLoading = isLoading && lastMessage?.role !== "assistant";
   // The optimistic message is superseded once the real turn lands (it shares
   // no id with any persisted message), so only show it while nothing newer
   // has arrived for this send.
   const showOptimisticMessage =
-    Boolean(optimisticMessage) && lastMessage?.id !== optimisticMessage?.id;
+    Boolean(optimisticId) && lastMessage?.id !== optimisticId;
 
   if (messages.length === 0 && !isLoading && !showOptimisticMessage) {
     return (
@@ -42,7 +59,7 @@ export function ChatMessagesList({
 
   // Collapse runs of consecutive same-role messages into a single MessageGroup
   // so same-sender bubbles read as one visual unit.
-  const messageGroups = messages.reduce<ChatMessageType[][]>((groups, message) => {
+  const messageGroups = messages.reduce<(typeof messages)[]>((groups, message) => {
     const lastGroup = groups[groups.length - 1];
     if (lastGroup && lastGroup[0].role === message.role) {
       lastGroup.push(message);
@@ -58,16 +75,16 @@ export function ChatMessagesList({
         <MessageGroup key={group[0].id}>
           {group.map((message) => (
             <MessageScrollerItem key={message.id} messageId={message.id}>
-              <ChatMessage message={message} onActionClick={onActionClick} />
+              <MessageRow id={message.id} onActionClick={onActionClick} />
             </MessageScrollerItem>
           ))}
         </MessageGroup>
       ))}
 
       {/* Show the just-sent message immediately, before the server round trip */}
-      {showOptimisticMessage && optimisticMessage && (
-        <MessageScrollerItem key={optimisticMessage.id}>
-          <ChatMessage message={optimisticMessage} onActionClick={onActionClick} />
+      {showOptimisticMessage && (
+        <MessageScrollerItem key={optimisticId}>
+          <OptimisticRow onActionClick={onActionClick} />
         </MessageScrollerItem>
       )}
 
@@ -82,4 +99,30 @@ export function ChatMessagesList({
       <MessageScrollerItem scrollAnchor className="h-1" />
     </>
   );
+}
+
+const MessageRow = memo(function MessageRow({
+  id,
+  onActionClick,
+}: {
+  id: string;
+  onActionClick?: (action: ChatAction) => void;
+}) {
+  const message = useChatStore((state) =>
+    state.messages.find((item) => item.id === id)
+  );
+  return message ? (
+    <ChatMessage message={message} onActionClick={onActionClick} />
+  ) : null;
+});
+
+function OptimisticRow({
+  onActionClick,
+}: {
+  onActionClick?: (action: ChatAction) => void;
+}) {
+  const message = useChatStore((state) => state.optimisticMessage);
+  return message ? (
+    <ChatMessage message={message} onActionClick={onActionClick} />
+  ) : null;
 }

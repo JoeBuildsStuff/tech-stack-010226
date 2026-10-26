@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { ChatMessage as ChatMessageType, ChatAction } from "@/types/chat";
+import type { ChatMessage as ChatMessageType, ChatAction } from "@/lib/chat/contracts";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { ChatMessageTrace } from "./chat-message-trace";
-import { derivePartsFromMessage } from "@/lib/chat/client/message-parts";
+import { partsOf, replyTiming } from "@/lib/chat/parts";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useChat } from "@/hooks/use-chat";
@@ -242,28 +242,21 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
   // content (or tool calls/reasoning/attachments) has arrived.
   const hasRenderableBody =
     message.content.trim().length > 0 ||
-    (message.toolCalls?.length ?? 0) > 0 ||
-    (message.attachments?.length ?? 0) > 0 ||
-    Boolean(message.reasoning);
+    (message.parts?.length ?? 0) > 0 ||
+    (message.attachments?.length ?? 0) > 0;
 
-  // The footer actions (copy/retry/edit/thumbs) act on the final text response.
-  // For the user's own message they can show as soon as it exists. For the
-  // assistant, they should only appear once the answer is actually finished —
-  // not while it's still streaming in — so wait for a terminal status (or for
-  // the stream to have stopped mid-flight, which "interrupted" covers).
-  const interrupted =
-    !isLoading &&
-    (message.status === "pending" || message.status === "streaming");
+  // The server generates the reply whether or not this tab is watching, so a
+  // pending/streaming status means it is still being written.
   const isStreaming =
-    isLoading &&
-    (message.status === "pending" || message.status === "streaming");
+    message.status === "pending" || message.status === "streaming";
+  const awaitingInput = message.status === "awaiting_input";
+  // The footer actions (copy/retry/edit/thumbs) act on the final text
+  // response, so the assistant's appear once the reply has stopped.
   const hasActionableContent = isUser
-    ? message.content.trim().length > 0 || Boolean(message.functionResult)
+    ? message.content.trim().length > 0
     : message.status === "completed" ||
       message.status === "failed" ||
-      message.status === "cancelled" ||
-      interrupted ||
-      Boolean(message.functionResult);
+      message.status === "cancelled";
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -368,10 +361,9 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
 
           {!isUser && (
             <ChatMessageTrace
-              parts={derivePartsFromMessage(message)}
+              parts={partsOf(message)}
               streaming={isStreaming}
-              startedAt={message.startedAt}
-              finishedAt={message.finishedAt}
+              {...replyTiming(message)}
               renderText={(text, key, isLast) => (
                 <div key={key} className="px-1 text-sm font-normal text-foreground break-words">
                   <MessageMarkdown
@@ -387,10 +379,9 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
             />
           )}
 
-          {interrupted && (
-            <p className="text-sm text-muted-foreground">
-              This response has not finished. Retry it if the request was
-              interrupted.
+          {awaitingInput && (
+            <p className="px-1 text-sm text-muted-foreground">
+              Waiting for your answer below.
             </p>
           )}
           {(message.status === "failed" || message.status === "cancelled") && (

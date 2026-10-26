@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { AttachmentGroup } from "@/components/ui/attachment";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatAttachmentCard } from "@/components/chat/chat-attachment-card";
+import { ChatContextUsage } from "@/components/chat/chat-context-usage";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
 import type { ChatAttachmentLike } from "@/lib/chat/attachments";
 
@@ -192,7 +194,12 @@ export function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, stopMessage } = useChat();
-  const { isLoading, layoutMode } = useChatStore();
+  const {
+    isLoading,
+    layoutMode,
+  } = useChatStore(
+    useShallow((state) => ({ isLoading: state.isLoading, layoutMode: state.layoutMode }))
+  );
   const [selectedModel, setSelectedModel] = useState("gpt-6-astra");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
@@ -484,6 +491,13 @@ export function ChatInput() {
 
             {/* Right side buttons */}
             <div className="flex gap-2 items-center">
+              <ChatContextUsage
+                model={selectedModel}
+                modelLabel={selectedModelLabel}
+                webSearchEnabled={webSearchEnabled}
+                draft={input}
+                draftAttachments={attachments}
+              />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

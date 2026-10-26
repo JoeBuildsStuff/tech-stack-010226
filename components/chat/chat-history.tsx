@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { toast } from "sonner";
@@ -31,14 +32,16 @@ export function ChatHistory() {
   const {
     currentSessionId,
     setShowHistory,
-    deleteSession: deleteLocalSession,
+    deleteLocalSession,
     upsertSessionFromServer,
     setCurrentSessionIdFromServer,
     openSessionTab,
     accountId,
     accountEpoch,
     isAccountReady,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({ currentSessionId: state.currentSessionId, setShowHistory: state.setShowHistory, deleteLocalSession: state.deleteSession, upsertSessionFromServer: state.upsertSessionFromServer, setCurrentSessionIdFromServer: state.setCurrentSessionIdFromServer, openSessionTab: state.openSessionTab, accountId: state.accountId, accountEpoch: state.accountEpoch, isAccountReady: state.isAccountReady }))
+  );
   const { loadConversation } = useChat();
 
   const [sessions, setSessions] = useState<

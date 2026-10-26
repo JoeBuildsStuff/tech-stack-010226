@@ -1,15 +1,22 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useChatStore } from "@/lib/chat/chat-store";
-import type { ChatMessage, ChatAction, PageContext } from "@/types/chat";
-import type { Json } from "@/types/supabase";
+import type {
+  ChatAction,
+  ChatMessage,
+  ChatMessagePart,
+  ChatMessageStatus,
+  ChatSettings,
+  ChatTurnMode,
+  Citation,
+  PageContext,
+  ReasoningEffort,
+  ToolOutput,
+} from "@/lib/chat/contracts";
 import type { Attachment } from "@/components/chat/chat-input";
 import {
   createChatSession,
-  beginChatTurn,
-  completeChatTurn,
-  failChatTurn,
   getChatConversation,
   selectChatBranch,
   clearChatConversation,
@@ -17,17 +24,19 @@ import {
 import type {
   PersistedChatMessage,
   ChatConversation,
+  PersistedAttachmentInput,
 } from "@/lib/chat/conversation-types";
-import { sendChatRequest } from "@/lib/chat/client/transport";
-import type { StreamToolCall } from "@/lib/chat/client/stream";
 import {
-  createPartsBuilder,
-  joinTextParts,
-  rememberStreamedShape,
-  withStreamedShape,
-} from "@/lib/chat/client/message-parts";
+  answerTurn,
+  attachTurn,
+  cancelTurn,
+  startTurn,
+} from "@/lib/chat/client/transport";
+import type { TurnStreamFrame } from "@/lib/chat/client/stream";
+import { applyCitations, applyTurnEvent } from "@/lib/chat/parts";
 import {
   abortChatRequest,
+  getChatRequest,
   registerChatRequest,
   releaseChatRequest,
   type ChatRequest,
@@ -36,15 +45,13 @@ import {
 interface UseChatProps {
   onActionClick?: (action: ChatAction) => void;
 }
-type ReasoningEffort =
-  | "none"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
 type AccountSnapshot = { accountId: string; accountEpoch: number };
 const loadVersions = new Map<string, number>();
+/** The turn each session is watching, so Stop can cancel it on the server. */
+const watchedTurns = new Map<string, string>();
+
+const isRunning = (status: ChatMessageStatus | undefined) =>
+  status === "pending" || status === "streaming";
 
 function accountSnapshot(): AccountSnapshot {
   const state = useChatStore.getState();
@@ -70,23 +77,19 @@ function unwrap<T>(result: { data?: T; error?: string }): T {
 }
 
 export function toChatMessage(message: PersistedChatMessage): ChatMessage {
-  return withStreamedShape({
+  return {
     id: message.id,
     role: message.role,
     content: message.content,
     timestamp: new Date(message.createdAt),
+    parts: message.role === "assistant" ? message.parts : undefined,
+    turnId: message.turnId,
     parentId: message.parentId,
     status: message.status,
     model: message.model,
     settings: message.settings,
-    reasoning: message.reasoning || undefined,
-    context: message.context as ChatMessage["context"],
-    functionResult: (message.functionResult ||
-      undefined) as ChatMessage["functionResult"],
-    citations: (message.citations || undefined) as ChatMessage["citations"],
-    toolCalls: message.toolCalls as unknown as ChatMessage["toolCalls"],
-    suggestedActions:
-      message.suggestedActions as unknown as ChatMessage["suggestedActions"],
+    citations: message.citations,
+    suggestedActions: message.suggestedActions,
     attachments: message.attachments.map((attachment) => ({
       id: attachment.id,
       name: attachment.name,
@@ -94,7 +97,7 @@ export function toChatMessage(message: PersistedChatMessage): ChatMessage {
       size: attachment.size,
       url: attachment.url || undefined,
     })),
-  });
+  };
 }
 
 function applyConversation(
@@ -153,8 +156,8 @@ async function uploadAttachments(
   attachments: Attachment[],
   account: AccountSnapshot,
   signal: AbortSignal
-) {
-  const uploaded = [];
+): Promise<PersistedAttachmentInput[]> {
+  const uploaded: PersistedAttachmentInput[] = [];
   for (const attachment of attachments) {
     assertAccount(account);
     signal.throwIfAborted();
@@ -188,409 +191,438 @@ async function uploadAttachments(
   return uploaded;
 }
 
-export function useChat({ onActionClick }: UseChatProps = {}) {
-  const messages = useChatStore((state) => state.messages);
-  const isOpen = useChatStore((state) => state.isOpen);
-  const isMinimized = useChatStore((state) => state.isMinimized);
-  const isLoading = useChatStore((state) => state.isLoading);
-  const currentContext = useChatStore((state) => state.currentContext);
+/** Live state of the reply a stream is filling in. */
+interface ReplyState {
+  sessionId: string;
+  assistantId: string | null;
+  parts: ChatMessagePart[];
+  citations: Citation[];
+  status: ChatMessageStatus;
+}
 
-  const loadConversation = useCallback(
-    async (sessionId: string, options?: { select?: boolean }) => {
-      const account = accountSnapshot();
-      const store = useChatStore.getState();
-      if (options?.select !== false)
-        store.setCurrentSessionIdFromServer(sessionId);
-      // An active stream already owns this session's view; loading a pending DB row
-      // over it would discard the text received since the request began.
-      if (store.loadingBySession[sessionId]) return;
-      await refreshConversation(sessionId, account);
-    },
-    []
+/**
+ * Fold a stream frame into the reply and render it. Only the reply message
+ * changes identity, so other messages and controls do not re-render.
+ */
+function applyFrame(
+  frame: TurnStreamFrame,
+  reply: ReplyState,
+  isCurrent: () => boolean
+) {
+  const store = useChatStore.getState();
+  if (frame.type === "turn") {
+    const { turn } = frame;
+    reply.assistantId = turn.assistantMessageId;
+    watchedTurns.set(reply.sessionId, turn.turnId);
+    if (!isCurrent()) return;
+    const user = toChatMessage(turn.userMessage);
+    store.setMessagesForSession(reply.sessionId, [
+      ...turn.history.map(toChatMessage),
+      user,
+      {
+        id: turn.assistantMessageId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        turnId: turn.turnId,
+        parentId: user.id,
+        status: "pending",
+        parts: [],
+        settings: turn.settings,
+        model: turn.model,
+      },
+    ]);
+    store.setOptimisticMessage(null);
+    return;
+  }
+  if (frame.type === "snapshot") {
+    reply.parts = frame.parts;
+    reply.citations = frame.citations;
+    reply.status = frame.status;
+  } else if (frame.type === "event") {
+    reply.parts = applyTurnEvent(reply.parts, frame.event);
+    reply.citations = applyCitations(reply.citations, frame.event);
+    if (reply.status === "pending") reply.status = "streaming";
+  } else {
+    reply.status = frame.status;
+  }
+  if (reply.assistantId && isCurrent())
+    store.updateMessageInSession(reply.sessionId, reply.assistantId, {
+      parts: reply.parts,
+      citations: reply.citations,
+      status: reply.status,
+    });
+}
+
+/**
+ * Watch a turn's stream in this tab. The request slot makes Stop and the
+ * loading state per-session; the server owns the turn itself.
+ */
+async function watchTurn(
+  account: AccountSnapshot,
+  sessionId: string,
+  reply: ReplyState,
+  open: (
+    signal: AbortSignal,
+    onMessage: (frame: TurnStreamFrame) => void
+  ) => Promise<void>,
+  options: { reservation?: string; requestId?: string } = {}
+) {
+  const store = useChatStore.getState();
+  const requestId = options.requestId ?? crypto.randomUUID();
+  if (!options.reservation && !store.beginRequest(sessionId, requestId))
+    throw new Error("This conversation is already processing a request.");
+  const request: ChatRequest = {
+    ...account,
+    sessionId,
+    requestId,
+    controller: new AbortController(),
+  };
+  if (!registerChatRequest(request)) {
+    store.finishRequest(sessionId, requestId);
+    throw new Error("This conversation is already processing a request.");
+  }
+  const isCurrent = () =>
+    accountIsCurrent(account) &&
+    useChatStore.getState().isRequestCurrent(sessionId, requestId);
+  try {
+    await open(request.controller.signal, (frame) =>
+      applyFrame(frame, reply, isCurrent)
+    );
+  } catch (error) {
+    if (!request.controller.signal.aborted && accountIsCurrent(account)) throw error;
+  } finally {
+    releaseChatRequest(request);
+    watchedTurns.delete(sessionId);
+    if (accountIsCurrent(account)) store.finishRequest(sessionId, requestId);
+  }
+  if (!accountIsCurrent(account)) return;
+  await refreshConversation(sessionId, account);
+}
+
+/**
+ * Attach to the selected conversation's running turn, if any. Called after a
+ * load, so a reply that kept generating while the tab was closed shows up live.
+ */
+async function attachIfRunning(sessionId: string, account: AccountSnapshot) {
+  const state = useChatStore.getState();
+  if (state.loadingBySession[sessionId]) return;
+  const session = state.sessions.find((item) => item.id === sessionId);
+  const running = session?.messages.findLast(
+    (message) => message.role === "assistant" && isRunning(message.status)
   );
-
-  const runTurn = useCallback(
-    async (input: {
-      content: string;
-      attachments?: Attachment[];
-      model?: string;
-      reasoningEffort?: ReasoningEffort;
-      webSearchEnabled?: boolean;
-      mode: "new" | "edit" | "retry";
-      targetMessageId?: string;
-    }) => {
-      const account = accountSnapshot();
-      const initial = useChatStore.getState();
-      let sessionId = initial.currentSessionId;
-      const reservation = sessionId || "__new__";
-      const requestId = crypto.randomUUID();
-      if (!initial.beginRequest(reservation, requestId))
-        throw new Error("This conversation is already processing a request.");
-      const request: ChatRequest = {
-        ...account,
-        sessionId: reservation,
-        requestId,
-        controller: new AbortController(),
-      };
-      if (!registerChatRequest(request)) {
-        initial.finishRequest(reservation, requestId);
-        throw new Error("This conversation is already processing a request.");
-      }
-      const { signal } = request.controller;
-      const context: PageContext | null = initial.currentContext
-        ? structuredClone(initial.currentContext)
-        : null;
-      const clientPath = window.location.pathname;
-      // Render the user's message right away, before the server has
-      // acknowledged the turn, so it never appears after the loading spinner.
-      if (input.mode === "new") {
-        initial.setOptimisticMessage({
-          id: "__optimistic__",
-          role: "user",
-          content: input.content,
-          timestamp: new Date(),
-          status: "completed",
-          attachments: (input.attachments || []).map((attachment) => ({
-            id: attachment.id,
-            name: attachment.name,
-            size: attachment.size,
-            type: attachment.type,
-          })),
-        });
-      }
-      let begun:
-        | { sessionId: string; turnId: string; assistantMessageId: string }
-        | undefined;
-      let completed = false;
-      try {
-        if (!sessionId) {
-          const session = unwrap(
-            await createChatSession({ accountId: account.accountId })
-          );
-          assertAccount(account);
-          signal.throwIfAborted();
-          sessionId = String(session.id);
-          initial.upsertSessionFromServer({
-            id: session.id,
-            title: session.title,
-            createdAt: new Date(session.created_at),
-            updatedAt: new Date(session.updated_at),
-            messages: [],
-          });
-          if (useChatStore.getState().currentSessionId === null)
-            initial.setCurrentSessionIdFromServer(sessionId);
-          releaseChatRequest(request);
-          initial.finishRequest(reservation, requestId);
-          request.sessionId = sessionId;
-          if (
-            !initial.beginRequest(sessionId, requestId) ||
-            !registerChatRequest(request)
-          )
-            throw new Error(
-              "This conversation is already processing a request."
-            );
-        }
-        if (!sessionId) throw new Error("Unable to create chat session");
-        if (
-          !useChatStore
-            .getState()
-            .sessions.some((session) => session.id === sessionId)
-        )
-          await refreshConversation(sessionId, account);
-        const shouldTitle =
-          input.mode === "new" &&
-          !initial.sessions
-            .find((session) => session.id === sessionId)
-            ?.messages.some((message) => message.role === "user");
-        const attachments = await uploadAttachments(
-          input.attachments || [],
-          account,
-          signal
-        );
-        assertAccount(account);
-        signal.throwIfAborted();
-        const turn = unwrap(
-          await beginChatTurn({
-            sessionId,
-            accountId: account.accountId,
-            turnId: requestId,
-            mode: input.mode,
-            targetMessageId: input.targetMessageId,
-            content: input.content,
-            attachments,
-            context: context as Json,
-            model:
-              input.mode === "new" ? input.model || "gpt-6-astra" : undefined,
-            settings:
-              input.mode === "new"
-                ? {
-                    reasoningEffort: input.reasoningEffort,
-                    webSearchEnabled: input.webSearchEnabled ?? true,
-                  }
-                : undefined,
-          })
-        );
-        begun = turn;
-        assertAccount(account);
-        signal.throwIfAborted();
-        const history = turn.history.map(toChatMessage);
-        const user = toChatMessage(turn.userMessage);
-        const parts = createPartsBuilder();
-        const startedAt = Date.now();
-        const assistant: ChatMessage = {
-          id: turn.assistantMessageId,
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-          parentId: user.id,
-          status: "pending",
-          parts: parts.snapshot(),
-          startedAt,
-        };
-        initial.setMessagesForSession(sessionId, [...history, user, assistant]);
-        initial.setOptimisticMessage(null);
-        let content = "";
-        const toolCalls: StreamToolCall[] = [];
-        const update = (updates: Partial<ChatMessage>) => {
-          if (
-            accountIsCurrent(account) &&
-            initial.isRequestCurrent(sessionId!, requestId)
-          )
-            initial.updateMessageInSession(sessionId!, assistant.id, {
-              ...updates,
-              parts: parts.snapshot(),
-            });
-        };
-        const result = await sendChatRequest({
-          accountId: account.accountId,
-          message: user.content,
-          history,
-          context,
-          clientPath,
-          model: turn.model || "gpt-6-astra",
-          reasoningEffort: turn.settings?.reasoningEffort as
-            | ReasoningEffort
-            | undefined,
-          webSearchEnabled: turn.settings?.webSearchEnabled ?? true,
-          attachments: turn.userMessage.attachments.map((attachment) => ({
-            name: attachment.name,
-            type: attachment.mimeType,
-            size: attachment.size,
-            url: attachment.url || undefined,
-            file: input.attachments?.find(
-              (file) =>
-                file.name === attachment.name && file.size === attachment.size
-            )?.file,
-          })),
-          signal,
-          onDelta: (delta) => {
-            parts.text(delta);
-            content = joinTextParts(parts.snapshot());
-            update({ content, status: "streaming" });
-          },
-          handlers: {
-            onReasoning: (delta) => {
-              parts.reasoning(delta);
-              update({ status: "streaming" });
-            },
-            onToolCall: (tool) => {
-              toolCalls.push(tool);
-              parts.toolCall(tool);
-              update({
-                status: "streaming",
-                toolCalls: toolCalls.map((item) => ({ ...item })),
-              });
-            },
-            onToolResult: ({ id, result }) => {
-              const tool = toolCalls.find((item) => item.id === id);
-              if (tool) tool.result = result;
-              parts.toolResult(id, result);
-              update({ toolCalls: toolCalls.map((item) => ({ ...item })) });
-            },
-          },
-        });
-        // Some replies only arrive in the final "done" payload (e.g. the
-        // server's "No response generated" fallback); never drop them.
-        if (!joinTextParts(parts.snapshot()) && result.message)
-          parts.text(result.message);
-        parts.finish();
-        rememberStreamedShape(assistant.id, {
-          parts: parts.snapshot(),
-          startedAt,
-          finishedAt: Date.now(),
-        });
-        assertAccount(account);
-        signal.throwIfAborted();
-        unwrap(
-          await completeChatTurn({
-            sessionId,
-            turnId: turn.turnId,
-            assistantMessageId: assistant.id,
-            accountId: account.accountId,
-            content: result.message || content,
-            reasoning: result.reasoning,
-            functionResult: result.functionResult as Json,
-            citations: result.citations as Json,
-            toolCalls: result.toolCalls as unknown as Json[],
-            suggestedActions: result.actions as unknown as Json[],
-          })
-        );
-        completed = true;
-        assertAccount(account);
-        await refreshConversation(sessionId, account);
-        if (shouldTitle && user.content.trim()) {
-          void fetch("/api/chat/title", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Chat-Account-Id": account.accountId,
-            },
-            body: JSON.stringify({ sessionId, message: user.content }),
-          })
-            .then(async (response) => {
-              if (!response.ok) return;
-              const result = (await response.json()) as { title?: string };
-              if (result.title && accountIsCurrent(account))
-                initial.updateSessionTitle(sessionId!, result.title);
-            })
-            .catch(() => {});
-        }
-      } catch (error) {
-        if (begun && !completed && accountIsCurrent(account)) {
-          unwrap(
-            await failChatTurn({
-              ...begun,
-              accountId: account.accountId,
-              status: signal.aborted ? "cancelled" : "failed",
-              error: signal.aborted
-                ? "Response stopped"
-                : error instanceof Error
-                  ? error.message
-                  : "Chat request failed",
-            })
-          );
-          await refreshConversation(begun.sessionId, account);
-        }
-        if (!signal.aborted && accountIsCurrent(account)) throw error;
-      } finally {
-        releaseChatRequest(request);
-        if (useChatStore.getState().optimisticMessage?.id === "__optimistic__")
-          initial.setOptimisticMessage(null);
-        if (accountIsCurrent(account)) {
-          initial.finishRequest(request.sessionId, requestId);
-          initial.finishRequest(reservation, requestId);
-        }
-      }
+  if (!running?.turnId) return;
+  const turnId = running.turnId;
+  watchedTurns.set(sessionId, turnId);
+  await watchTurn(
+    account,
+    sessionId,
+    {
+      sessionId,
+      assistantId: running.id,
+      parts: running.parts ?? [],
+      citations: running.citations ?? [],
+      status: running.status ?? "streaming",
     },
-    []
+    (signal, onMessage) =>
+      attachTurn(turnId, { accountId: account.accountId, signal, onMessage })
   );
+}
 
-  const sendMessage = useCallback(
-    async (
-      content: string,
-      attachments?: Attachment[],
-      model?: string,
-      reasoningEffort?: ReasoningEffort,
-      options?: { skipUserAdd?: boolean; webSearchEnabled?: boolean }
-    ) => {
-      if (!content.trim() && !attachments?.length) return;
-      await runTurn({
-        content: content.trim() || "Sent with attachments",
-        attachments,
-        model,
-        reasoningEffort,
-        webSearchEnabled: options?.webSearchEnabled,
-        mode: "new",
+async function runTurn(input: {
+  content: string;
+  attachments?: Attachment[];
+  model?: string;
+  settings?: ChatSettings;
+  mode: ChatTurnMode;
+  targetMessageId?: string;
+}) {
+  const account = accountSnapshot();
+  const initial = useChatStore.getState();
+  let sessionId = initial.currentSessionId;
+  const reservation = sessionId || "__new__";
+  const requestId = crypto.randomUUID();
+  if (!initial.beginRequest(reservation, requestId))
+    throw new Error("This conversation is already processing a request.");
+  const context: PageContext | null = initial.currentContext
+    ? structuredClone(initial.currentContext)
+    : null;
+  // Render the user's message right away, before the server has
+  // acknowledged the turn, so it never appears after the loading spinner.
+  if (input.mode === "new") {
+    initial.setOptimisticMessage({
+      id: "__optimistic__",
+      role: "user",
+      content: input.content,
+      timestamp: new Date(),
+      status: "completed",
+      attachments: (input.attachments || []).map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        size: attachment.size,
+        type: attachment.type,
+      })),
+    });
+  }
+
+  const setup = new AbortController();
+  const releaseReservation = () => initial.finishRequest(reservation, requestId);
+  let attachments: PersistedAttachmentInput[];
+  let shouldTitle = false;
+  try {
+    if (!sessionId) {
+      const session = unwrap(
+        await createChatSession({ accountId: account.accountId })
+      );
+      assertAccount(account);
+      sessionId = String(session.id);
+      initial.upsertSessionFromServer({
+        id: session.id,
+        title: session.title,
+        createdAt: new Date(session.created_at),
+        updatedAt: new Date(session.updated_at),
+        messages: [],
       });
-    },
-    [runTurn]
-  );
-  const retryMessage = useCallback(
-    (messageId: string) =>
-      runTurn({ content: "", mode: "retry", targetMessageId: messageId }),
-    [runTurn]
-  );
-  const editMessage = useCallback(
-    (messageId: string, content: string) =>
-      runTurn({ content, mode: "edit", targetMessageId: messageId }),
-    [runTurn]
-  );
-  const stopMessage = useCallback(() => {
-    const { accountId, currentSessionId } = useChatStore.getState();
-    if (accountId) abortChatRequest(accountId, currentSessionId || "__new__");
-  }, []);
+      if (useChatStore.getState().currentSessionId === null)
+        initial.setCurrentSessionIdFromServer(sessionId);
+    }
+    shouldTitle =
+      input.mode === "new" &&
+      !useChatStore
+        .getState()
+        .sessions.find((session) => session.id === sessionId)
+        ?.messages.some((message) => message.role === "user");
+    attachments = await uploadAttachments(
+      input.attachments || [],
+      account,
+      setup.signal
+    );
+    assertAccount(account);
+  } catch (error) {
+    releaseReservation();
+    if (useChatStore.getState().optimisticMessage?.id === "__optimistic__")
+      initial.setOptimisticMessage(null);
+    throw error;
+  }
 
-  const mutateConversation = useCallback(
-    async (
-      mutation: (
-        sessionId: string,
-        accountId: string
-      ) => Promise<{ error?: string }>
-    ) => {
-      const account = accountSnapshot();
-      const state = useChatStore.getState();
-      const sessionId = state.currentSessionId;
-      if (!sessionId) return;
-      const requestId = crypto.randomUUID();
-      if (!state.beginRequest(sessionId, requestId))
-        throw new Error(
-          "Wait for this response to finish before changing the conversation."
-        );
-      try {
-        const result = await mutation(sessionId, account.accountId);
-        if (result.error) throw new Error(result.error);
-        assertAccount(account);
-        await refreshConversation(sessionId, account);
-      } finally {
-        if (accountIsCurrent(account))
-          state.finishRequest(sessionId, requestId);
-      }
+  // Move the request slot from the "new chat" reservation to the session.
+  releaseReservation();
+  const turnSessionId = sessionId;
+  const turnId = requestId;
+  if (!initial.beginRequest(turnSessionId, requestId))
+    throw new Error("This conversation is already processing a request.");
+  watchedTurns.set(turnSessionId, turnId);
+  try {
+    await watchTurn(
+      account,
+      turnSessionId,
+      {
+        sessionId: turnSessionId,
+        assistantId: null,
+        parts: [],
+        citations: [],
+        status: "pending",
+      },
+      (signal, onMessage) =>
+        startTurn({
+          accountId: account.accountId,
+          signal,
+          onMessage,
+          sessionId: turnSessionId,
+          turnId,
+          mode: input.mode,
+          content: input.content,
+          targetMessageId: input.targetMessageId,
+          model: input.model,
+          settings: input.settings,
+          attachments,
+          context,
+        }),
+      { reservation: turnSessionId, requestId }
+    );
+  } finally {
+    if (useChatStore.getState().optimisticMessage?.id === "__optimistic__")
+      initial.setOptimisticMessage(null);
+  }
+
+  if (shouldTitle && input.content.trim() && accountIsCurrent(account)) {
+    void fetch("/api/chat/title", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Chat-Account-Id": account.accountId,
+      },
+      body: JSON.stringify({ sessionId: turnSessionId, message: input.content }),
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const result = (await response.json()) as { title?: string };
+        if (result.title && accountIsCurrent(account))
+          useChatStore.getState().updateSessionTitle(turnSessionId, result.title);
+      })
+      .catch(() => {});
+  }
+}
+
+async function mutateConversation(
+  mutation: (sessionId: string, accountId: string) => Promise<{ error?: string }>
+) {
+  const account = accountSnapshot();
+  const state = useChatStore.getState();
+  const sessionId = state.currentSessionId;
+  if (!sessionId) return;
+  const requestId = crypto.randomUUID();
+  if (!state.beginRequest(sessionId, requestId))
+    throw new Error(
+      "Wait for this response to finish before changing the conversation."
+    );
+  try {
+    const result = await mutation(sessionId, account.accountId);
+    if (result.error) throw new Error(result.error);
+    assertAccount(account);
+    await refreshConversation(sessionId, account);
+  } finally {
+    if (accountIsCurrent(account)) state.finishRequest(sessionId, requestId);
+  }
+}
+
+// ─── Public actions (stable; they subscribe to nothing) ─────────────────────
+
+async function loadConversation(
+  sessionId: string,
+  options?: { select?: boolean }
+) {
+  const account = accountSnapshot();
+  const store = useChatStore.getState();
+  if (options?.select !== false) store.setCurrentSessionIdFromServer(sessionId);
+  // An active stream already owns this session's view; loading a pending DB row
+  // over it would discard the text received since the request began.
+  if (store.loadingBySession[sessionId]) return;
+  await refreshConversation(sessionId, account);
+  await attachIfRunning(sessionId, account);
+}
+
+async function sendMessage(
+  content: string,
+  attachments?: Attachment[],
+  model?: string,
+  reasoningEffort?: ReasoningEffort,
+  options?: { webSearchEnabled?: boolean }
+) {
+  if (!content.trim() && !attachments?.length) return;
+  await runTurn({
+    content: content.trim() || "Sent with attachments",
+    attachments,
+    model: model || "gpt-6-astra",
+    settings: {
+      reasoningEffort: reasoningEffort ?? null,
+      webSearchEnabled: options?.webSearchEnabled ?? true,
     },
-    []
+    mode: "new",
+  });
+}
+
+const retryMessage = (messageId: string) =>
+  runTurn({ content: "", mode: "retry", targetMessageId: messageId });
+
+const editMessage = (messageId: string, content: string) =>
+  runTurn({ content, mode: "edit", targetMessageId: messageId });
+
+/**
+ * Stop the selected conversation's reply. The server records the stop and
+ * ends the stream, so the transcript refreshes with what had streamed.
+ */
+async function stopMessage() {
+  const { accountId, currentSessionId } = useChatStore.getState();
+  if (!accountId) return;
+  const sessionId = currentSessionId || "__new__";
+  // A reply waiting on ask_user has no stream open, but can still be stopped.
+  const turnId =
+    watchedTurns.get(sessionId) ??
+    useChatStore
+      .getState()
+      .messages.findLast(
+        (message) =>
+          message.role === "assistant" &&
+          (isRunning(message.status) || message.status === "awaiting_input")
+      )?.turnId;
+  // Nothing started on the server yet (still creating the chat or uploading).
+  if (!turnId) return abortChatRequest(accountId, sessionId);
+  const request = getChatRequest(accountId, sessionId);
+  try {
+    await cancelTurn(turnId, accountId);
+    if (!request && currentSessionId)
+      await refreshConversation(currentSessionId, accountSnapshot());
+  } finally {
+    // Stop watching even if the stream does not close promptly, but never
+    // abort a newer request started in the meantime.
+    setTimeout(() => {
+      if (request && getChatRequest(accountId, sessionId) === request)
+        request.controller.abort();
+    }, 3000);
+  }
+}
+
+/** Answer the model's ask_user questions; the same reply continues. */
+async function answerQuestion(
+  message: ChatMessage,
+  toolCallId: string,
+  output: ToolOutput<"ask_user">
+) {
+  const account = accountSnapshot();
+  const sessionId = useChatStore.getState().currentSessionId;
+  if (!sessionId || !message.turnId) throw new Error("This question has expired.");
+  const turnId = message.turnId;
+  watchedTurns.set(sessionId, turnId);
+  await watchTurn(
+    account,
+    sessionId,
+    {
+      sessionId,
+      assistantId: message.id,
+      parts: message.parts ?? [],
+      citations: message.citations ?? [],
+      status: "streaming",
+    },
+    (signal, onMessage) =>
+      answerTurn(
+        turnId,
+        { toolCallId, output },
+        { accountId: account.accountId, signal, onMessage }
+      )
   );
-  const clearConversation = useCallback(
-    () =>
-      mutateConversation((sessionId, accountId) =>
-        clearChatConversation(sessionId, accountId)
-      ),
-    [mutateConversation]
+}
+
+const clearConversation = () =>
+  mutateConversation((sessionId, accountId) =>
+    clearChatConversation(sessionId, accountId)
   );
-  const selectBranch = useCallback(
-    (leafMessageId: string) =>
-      mutateConversation((sessionId, accountId) =>
-        selectChatBranch(sessionId, leafMessageId, accountId)
-      ),
-    [mutateConversation]
+
+const selectBranch = (leafMessageId: string) =>
+  mutateConversation((sessionId, accountId) =>
+    selectChatBranch(sessionId, leafMessageId, accountId)
   );
+
+export const chatActions = {
+  loadConversation,
+  sendMessage,
+  retryMessage,
+  editMessage,
+  stopMessage,
+  answerQuestion,
+  clearConversation,
+  selectBranch,
+};
+
+/**
+ * Chat actions plus the selected conversation's loading flag. The flag only
+ * changes when a request starts or ends, never per streamed token.
+ */
+export function useChat({ onActionClick }: UseChatProps = {}) {
+  const isLoading = useChatStore((state) => state.isLoading);
   const handleActionClick = useCallback(
     (action: ChatAction) => onActionClick?.(action),
     [onActionClick]
   );
-  const chatState = useMemo(
-    () => ({
-      isEmpty: !messages.length,
-      hasMessages: !!messages.length,
-      lastMessage: messages.at(-1) || null,
-      messageCount: messages.length,
-      isTyping: isLoading,
-    }),
-    [messages, isLoading]
-  );
-
-  return {
-    messages,
-    isOpen,
-    isMinimized,
-    isLoading,
-    currentContext,
-    chatState,
-    sendMessage,
-    stopMessage,
-    retryMessage,
-    editMessage,
-    clearConversation,
-    selectBranch,
-    loadConversation,
-    handleActionClick,
-  };
+  return { ...chatActions, isLoading, handleActionClick };
 }

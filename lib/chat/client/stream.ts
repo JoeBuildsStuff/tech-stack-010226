@@ -1,103 +1,29 @@
-export interface ToolCallResponse {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  result?: {
-    success: boolean;
-    data?: unknown;
-    error?: string;
-  };
-  reasoning?: string;
-}
+import type { TurnStreamMessage } from "@/lib/chat/contracts";
+import type { TurnStartMessage } from "@/lib/chat/conversation-types";
 
-export interface ActionResponse {
-  type: "filter" | "sort" | "navigate" | "create" | "function_call";
-  label: string;
-  payload: Record<string, unknown>;
-}
+export type TurnStreamFrame = TurnStreamMessage | TurnStartMessage;
 
-export interface ChatStreamResult {
-  message?: string;
-  reasoning?: string;
-  functionResult?: { success: boolean; data?: unknown; error?: string };
-  actions?: ActionResponse[];
-  toolCalls?: ToolCallResponse[];
-  citations?: Array<{
-    url: string;
-    title: string;
-    cited_text: string;
-  }>;
-}
-
-export interface StreamToolCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  result?: { success: boolean; data?: unknown; error?: string };
-}
-
-export interface ChatStreamHandlers {
-  onReasoning?: (delta: string) => void;
-  onToolCall?: (toolCall: StreamToolCall) => void;
-  onToolResult?: (toolResult: {
-    id: string;
-    result: { success: boolean; data?: unknown; error?: string };
-  }) => void;
-}
-
-export async function readChatStream(
+/**
+ * Read a turn's server-sent events. Each frame is one JSON message; the
+ * stream ends when the turn stops running or the connection drops.
+ */
+export async function readTurnStream(
   response: Response,
-  onDelta: (delta: string) => void,
-  signal: AbortSignal,
-  handlers?: ChatStreamHandlers
-): Promise<ChatStreamResult> {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("text/event-stream") || !response.body) {
-    return (await response.json()) as ChatStreamResult;
-  }
-
+  onMessage: (message: TurnStreamFrame) => void,
+  signal: AbortSignal
+) {
+  if (!response.body) throw new Error("Chat stream is unavailable");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let finalResult: ChatStreamResult | null = null;
 
   const handleFrame = (frame: string) => {
-    let event = "message";
-    const dataLines: string[] = [];
-
-    for (const line of frame.split(/\r?\n/)) {
-      if (line.startsWith("event:")) {
-        event = line.slice("event:".length).trim();
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice("data:".length).trimStart());
-      }
-    }
-
-    if (dataLines.length === 0) return;
-    const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
-
-    if (event === "delta" && typeof payload.delta === "string") {
-      onDelta(payload.delta);
-    } else if (event === "reasoning" && typeof payload.delta === "string") {
-      handlers?.onReasoning?.(payload.delta);
-    } else if (event === "tool_call" && handlers?.onToolCall) {
-      handlers.onToolCall(payload as unknown as StreamToolCall);
-    } else if (event === "tool_result" && handlers?.onToolResult) {
-      handlers.onToolResult(
-        payload as unknown as {
-          id: string;
-          result: { success: boolean; data?: unknown; error?: string };
-        }
-      );
-    } else if (event === "done") {
-      finalResult = payload as ChatStreamResult;
-    } else if (event === "error") {
-      throw new Error(
-        typeof payload.message === "string"
-          ? payload.message
-          : "Chat stream failed"
-      );
-    }
+    const data = frame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart())
+      .join("\n");
+    if (data) onMessage(JSON.parse(data) as TurnStreamFrame);
   };
 
   try {
@@ -113,9 +39,6 @@ export async function readChatStream(
     buffer += decoder.decode();
     if (buffer.trim()) handleFrame(buffer);
     signal.throwIfAborted();
-    if (!finalResult)
-      throw new Error("Chat stream ended before completion. Please retry.");
-    return finalResult;
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();

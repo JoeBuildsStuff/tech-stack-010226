@@ -5,18 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { Json } from "@/types/supabase";
 import {
-  beginChatTurn as beginDurableChatTurn,
   clearChatConversation as clearDurableChatConversation,
-  completeChatTurn as completeDurableChatTurn,
-  failChatTurn as failDurableChatTurn,
   getChatConversation as getDurableChatConversation,
   selectChatBranch as selectDurableChatBranch,
 } from "@/lib/chat/server/conversation-service";
-import type {
-  BeginChatTurnInput,
-  CompleteChatTurnInput,
-  FailChatTurnInput,
-} from "@/lib/chat/conversation-types";
 
 /** Storage buckets for chat attachments. Create in Supabase Dashboard → Storage if missing. */
 const CHAT_IMAGES_BUCKET = "chat-images";
@@ -208,21 +200,6 @@ export async function getChatSessionSummariesByIds(
 
   if (error) return { error: error.message };
   return { data: data || [] };
-}
-
-/** Begin a durable turn and return the server-selected history for the provider. */
-export async function beginChatTurn(input: BeginChatTurnInput) {
-  return beginDurableChatTurn(input);
-}
-
-/** Atomically mark the pending assistant row complete, then return its DTO. */
-export async function completeChatTurn(input: CompleteChatTurnInput) {
-  return completeDurableChatTurn(input);
-}
-
-/** Persist a failed/cancelled turn so reloads never resurrect a fake response. */
-export async function failChatTurn(input: FailChatTurnInput) {
-  return failDurableChatTurn(input);
 }
 
 export async function getChatConversation(

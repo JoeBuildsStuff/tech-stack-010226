@@ -1,4 +1,4 @@
-import { ChatMessage } from "@/types/chat";
+import type { ChatMessage } from "@/lib/chat/contracts";
 import { Button } from "../ui/button";
 import {
   ChevronLeft,

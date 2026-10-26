@@ -1411,7 +1411,8 @@ export type Database = {
           turn_id: string | null
           model: string | null
           settings: Json
-          status: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          parts: Json | null
+          status: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
         }
         Insert: {
           citations?: Json | null
@@ -1431,7 +1432,8 @@ export type Database = {
           turn_id?: string | null
           model?: string | null
           settings?: Json
-          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          parts?: Json | null
+          status?: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
         }
         Update: {
           citations?: Json | null
@@ -1451,7 +1453,8 @@ export type Database = {
           turn_id?: string | null
           model?: string | null
           settings?: Json
-          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          parts?: Json | null
+          status?: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
         }
         Relationships: [
           {
@@ -1487,7 +1490,9 @@ export type Database = {
           assistant_message_id: string | null
           model: string
           settings: Json
-          status: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          request: Json
+          heartbeat_at: string | null
+          status: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
           error: string | null
           created_at: string
           updated_at: string
@@ -1501,7 +1506,9 @@ export type Database = {
           assistant_message_id?: string | null
           model?: string
           settings?: Json
-          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          request?: Json
+          heartbeat_at?: string | null
+          status?: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
           error?: string | null
           created_at?: string
           updated_at?: string
@@ -1515,7 +1522,9 @@ export type Database = {
           assistant_message_id?: string | null
           model?: string
           settings?: Json
-          status?: "pending" | "streaming" | "completed" | "failed" | "cancelled"
+          request?: Json
+          heartbeat_at?: string | null
+          status?: "pending" | "streaming" | "awaiting_input" | "completed" | "failed" | "cancelled"
           error?: string | null
           created_at?: string
           updated_at?: string
@@ -1678,6 +1687,7 @@ export type Database = {
           p_turn_id?: string | null
           p_context?: Json | null
           p_attachments?: Json
+          p_request?: Json
         }
         Returns: Json
       }
@@ -1692,6 +1702,7 @@ export type Database = {
           p_function_result?: Json | null
           p_tool_calls?: Json
           p_actions?: Json
+          p_parts?: Json | null
         }
         Returns: Json
       }
@@ -1710,8 +1721,28 @@ export type Database = {
           p_assistant_message_id: string
           p_status: string
           p_error?: string | null
+          p_parts?: Json | null
         }
         Returns: Json
+      }
+      save_chat_turn_progress: {
+        Args: {
+          p_session_id: string
+          p_turn_id: string
+          p_assistant_message_id: string
+          p_parts: Json
+          p_content: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      resume_chat_turn: {
+        Args: { p_session_id: string; p_turn_id: string; p_parts: Json }
+        Returns: Json
+      }
+      expire_stale_chat_turns: {
+        Args: { p_session_id: string; p_stale_seconds?: number }
+        Returns: number
       }
     }
     Enums: {

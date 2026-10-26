@@ -1,97 +1,121 @@
-import type { ChatMessage, PageContext } from "@/types/chat";
-import { readChatStream, type ChatStreamHandlers } from "./stream";
+import type {
+  ChatSettings,
+  ChatTurnMode,
+  PageContext,
+  ToolOutput,
+} from "@/lib/chat/contracts";
+import type { PersistedAttachmentInput } from "@/lib/chat/conversation-types";
+import { readTurnStream, type TurnStreamFrame } from "./stream";
 
-export interface TransportAttachment {
-  name: string;
-  type: string;
-  size: number;
-  file?: File;
-  url?: string;
-}
-
-export interface ChatTransportOptions {
+interface StreamOptions {
   accountId: string;
-  message: string;
-  history: ChatMessage[];
-  context: PageContext | null;
-  model: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
-  webSearchEnabled: boolean;
-  attachments: TransportAttachment[];
-  clientPath: string;
   signal: AbortSignal;
-  onDelta: (delta: string) => void;
-  handlers?: ChatStreamHandlers;
+  onMessage: (message: TurnStreamFrame) => void;
 }
 
-export function chatEndpoint(model: string) {
-  if (model.startsWith("gpt-oss-120b")) return "/api/chat/cerebras";
-  if (model.startsWith("gpt-5") || model.startsWith("gpt-6"))
-    return "/api/chat/openai";
-  if (model.startsWith("grok-")) return "/api/chat/xai";
-  return "/api/chat/anthropic";
+export interface StartTurnOptions extends StreamOptions {
+  sessionId: string;
+  turnId: string;
+  mode: ChatTurnMode;
+  content: string;
+  targetMessageId?: string;
+  model?: string;
+  settings?: ChatSettings;
+  attachments: PersistedAttachmentInput[];
+  context: PageContext | null;
 }
 
-/** Snapshot passed by the caller is immutable for the lifetime of this request. */
-export async function sendChatRequest(options: ChatTransportOptions) {
-  const form = new FormData();
-  form.set("message", options.message);
-  form.set("messages", JSON.stringify(options.history.slice(-10)));
-  form.set("context", JSON.stringify(options.context));
-  form.set("model", options.model);
-  if (options.reasoningEffort)
-    form.set("reasoning_effort", options.reasoningEffort);
-  form.set("web_search_enabled", String(options.webSearchEnabled));
-  form.set("stream", "true");
-  form.set("client_path", options.clientPath);
+async function failureMessage(response: Response) {
+  const result = (await response.json().catch(() => null)) as {
+    message?: string;
+    error?: string;
+  } | null;
+  return result?.message || result?.error || `Chat request failed (${response.status})`;
+}
+
+async function stream(url: string, init: RequestInit, options: StreamOptions) {
+  const response = await fetch(url, {
+    ...init,
+    signal: options.signal,
+    headers: {
+      ...init.headers,
+      "X-Chat-Account-Id": options.accountId,
+    },
+  });
+  if (!response.ok) throw new Error(await failureMessage(response));
+  await readTurnStream(response, options.onMessage, options.signal);
+}
+
+function clientRequest() {
   const now = new Date();
   const offsetMinutes = now.getTimezoneOffset();
   const abs = Math.abs(offsetMinutes);
-  const offset = `${offsetMinutes <= 0 ? "+" : "-"}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
-  form.set("client_tz", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
-  form.set("client_utc_offset", offset);
-  form.set("client_now_iso", now.toISOString());
+  return {
+    clientTz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    clientUtcOffset: `${offsetMinutes <= 0 ? "+" : "-"}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`,
+    clientNowIso: now.toISOString(),
+    clientPath: window.location.pathname,
+  };
+}
 
-  for (const [index, attachment] of options.attachments.entries()) {
-    options.signal.throwIfAborted();
-    let file = attachment.file;
-    if (!file && attachment.url) {
-      const response = await fetch(attachment.url, { signal: options.signal });
-      if (!response.ok)
-        throw new Error(`Unable to load attachment: ${attachment.name}`);
-      file = new File([await response.blob()], attachment.name, {
-        type: attachment.type,
-      });
-    }
-    if (!file) throw new Error(`Attachment is unavailable: ${attachment.name}`);
-    form.set(`attachment-${index}`, file);
-    form.set(`attachment-${index}-name`, attachment.name);
-    form.set(`attachment-${index}-type`, attachment.type);
-    form.set(`attachment-${index}-size`, String(file.size));
-  }
-  form.set("attachmentCount", String(options.attachments.length));
-  options.signal.throwIfAborted();
-  const response = await fetch(chatEndpoint(options.model), {
-    method: "POST",
-    body: form,
-    signal: options.signal,
-    headers: { "X-Chat-Account-Id": options.accountId },
-  });
-  if (!response.ok) {
-    const result = (await response.json().catch(() => null)) as {
-      message?: string;
-      error?: string;
-    } | null;
-    throw new Error(
-      result?.message ||
-        result?.error ||
-        `Chat request failed (${response.status})`
-    );
-  }
-  return readChatStream(
-    response,
-    options.onDelta,
-    options.signal,
-    options.handlers
+/**
+ * Begin a turn. The server reads history itself and keeps generating if this
+ * stream closes; the stream only lets this tab watch it.
+ */
+export function startTurn(options: StartTurnOptions) {
+  return stream(
+    "/api/chat/turns",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: options.sessionId,
+        turnId: options.turnId,
+        mode: options.mode,
+        content: options.content,
+        targetMessageId: options.targetMessageId,
+        model: options.model,
+        settings: options.settings,
+        attachments: options.attachments,
+        context: options.context,
+        request: clientRequest(),
+      }),
+    },
+    options
   );
+}
+
+/** Watch a turn that is already running (another tab, a reload, a reconnect). */
+export function attachTurn(turnId: string, options: StreamOptions) {
+  return stream(
+    `/api/chat/turns/${encodeURIComponent(turnId)}/stream`,
+    { method: "GET" },
+    options
+  );
+}
+
+/** Answer ask_user; the server continues the same reply and streams it. */
+export function answerTurn(
+  turnId: string,
+  answer: { toolCallId: string; output: ToolOutput<"ask_user"> },
+  options: StreamOptions
+) {
+  return stream(
+    `/api/chat/turns/${encodeURIComponent(turnId)}/answer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(answer),
+    },
+    options
+  );
+}
+
+/** Stop a turn on the server. Closing a stream alone does not stop it. */
+export async function cancelTurn(turnId: string, accountId: string) {
+  const response = await fetch(
+    `/api/chat/turns/${encodeURIComponent(turnId)}/cancel`,
+    { method: "POST", headers: { "X-Chat-Account-Id": accountId } }
+  );
+  if (!response.ok) throw new Error(await failureMessage(response));
 }

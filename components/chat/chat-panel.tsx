@@ -1,11 +1,13 @@
 "use client";
 
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { useChat } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
+import { ChatQuestionCard } from "@/components/chat/chat-question-card";
 import { ChatHistory } from "@/components/chat/chat-history";
 import {
   MessageScroller,
@@ -24,8 +26,15 @@ export function ChatPanel() {
 }
 
 function ChatPanelContent() {
-  const { isOpen, isMinimized, isMaximized, showHistory, currentSessionId } =
-    useChatStore();
+  const {
+    isOpen,
+    isMinimized,
+    isMaximized,
+    showHistory,
+    currentSessionId,
+  } = useChatStore(
+    useShallow((state) => ({ isOpen: state.isOpen, isMinimized: state.isMinimized, isMaximized: state.isMaximized, showHistory: state.showHistory, currentSessionId: state.currentSessionId }))
+  );
   const router = useRouter();
 
   const { handleActionClick } = useChat({
@@ -124,6 +133,7 @@ function ChatPanelContent() {
 
           {/* Input Area */}
           <div className="bg-transparent">
+            <ChatQuestionCard />
             <ChatInput key={currentSessionId || "new"} />
           </div>
         </>

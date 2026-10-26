@@ -1,4 +1,4 @@
-import type { Anthropic } from '@anthropic-ai/sdk'
+import type { ToolInput } from '@/lib/chat/tools/definitions'
 
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2'
 const DEFAULT_SEARCH_LIMIT = 5
@@ -6,8 +6,6 @@ const MAX_SEARCH_LIMIT = 8
 const DEFAULT_SCRAPE_CHARS = 12000
 const MAX_SCRAPE_CHARS = 30000
 const FIRECRAWL_TIMEOUT_MS = 60000
-
-type ToolResult = Promise<{ success: boolean; data?: unknown; error?: string }>
 
 type FirecrawlSearchResult = {
   title?: string
@@ -100,71 +98,16 @@ async function firecrawlRequest<T>(path: string, body: Record<string, unknown>):
   return payload.data
 }
 
-export const firecrawlSearchTool: Anthropic.Tool = {
-  name: 'web_search',
-  description:
-    'Search the live web with Firecrawl. Use for current, time-sensitive, or externally verifiable information. Returns source titles, URLs, and descriptions; cite the returned URLs in the final response.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      query: {
-        type: 'string',
-        description: 'Search query, up to 500 characters.',
-      },
-      limit: {
-        type: 'integer',
-        description: `Number of results to return (1-${MAX_SEARCH_LIMIT}, default ${DEFAULT_SEARCH_LIMIT}).`,
-      },
-      recency: {
-        type: 'string',
-        enum: ['hour', 'day', 'week', 'month', 'year'],
-        description: 'Optional recency filter.',
-      },
-      includeDomains: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Optional hostnames to search, without protocol or paths.',
-      },
-      excludeDomains: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Optional hostnames to exclude. Do not combine with includeDomains.',
-      },
-    },
-    required: ['query'],
-  },
-}
-
-export const firecrawlScrapeTool: Anthropic.Tool = {
-  name: 'web_scrape',
-  description:
-    'Read the main content of a public web page with Firecrawl and return clean Markdown. Use after web_search when result descriptions are insufficient. Cite the page URL in the final response.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      url: {
-        type: 'string',
-        description: 'Public HTTP or HTTPS URL to read.',
-      },
-      maxChars: {
-        type: 'integer',
-        description: `Maximum Markdown characters to return (1-${MAX_SCRAPE_CHARS}, default ${DEFAULT_SCRAPE_CHARS}).`,
-      },
-    },
-    required: ['url'],
-  },
-}
-
-export async function executeFirecrawlSearch(parameters: Record<string, unknown>): ToolResult {
+export async function executeFirecrawlSearch(parameters: ToolInput<"web_search">) {
   try {
     const query = asString(parameters.query)
-    if (!query) return { success: false, error: 'query is required' }
-    if (query.length > 500) return { success: false, error: 'query must be 500 characters or fewer' }
+    if (!query) return { success: false as const, error: 'query is required' }
+    if (query.length > 500) return { success: false as const, error: 'query must be 500 characters or fewer' }
 
     const includeDomains = asStringArray(parameters.includeDomains)
     const excludeDomains = asStringArray(parameters.excludeDomains)
     if (includeDomains && excludeDomains) {
-      return { success: false, error: 'includeDomains and excludeDomains cannot be combined' }
+      return { success: false as const, error: 'includeDomains and excludeDomains cannot be combined' }
     }
 
     const recencyMap: Record<string, string> = {
@@ -191,17 +134,17 @@ export async function executeFirecrawlSearch(parameters: Record<string, unknown>
       description: result.description || '',
     }))
 
-    return { success: true, data: { query, results } }
+    return { success: true as const, data: { query, results } }
   } catch (error) {
     console.error('Firecrawl search error:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Web search failed' }
+    return { success: false as const, error: error instanceof Error ? error.message : 'Web search failed' }
   }
 }
 
-export async function executeFirecrawlScrape(parameters: Record<string, unknown>): ToolResult {
+export async function executeFirecrawlScrape(parameters: ToolInput<"web_scrape">) {
   try {
     const url = validatePublicUrl(parameters.url)
-    if (!url) return { success: false, error: 'A valid public HTTP or HTTPS URL is required' }
+    if (!url) return { success: false as const, error: 'A valid public HTTP or HTTPS URL is required' }
 
     const maxChars = clampInteger(parameters.maxChars, DEFAULT_SCRAPE_CHARS, MAX_SCRAPE_CHARS)
     const data = await firecrawlRequest<{
@@ -216,7 +159,7 @@ export async function executeFirecrawlScrape(parameters: Record<string, unknown>
     const markdown = truncate(data.markdown || '', maxChars)
 
     return {
-      success: true,
+      success: true as const,
       data: {
         title: data.metadata?.title || url,
         url: data.metadata?.sourceURL || data.metadata?.url || url,
@@ -227,6 +170,6 @@ export async function executeFirecrawlScrape(parameters: Record<string, unknown>
     }
   } catch (error) {
     console.error('Firecrawl scrape error:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Web page scrape failed' }
+    return { success: false as const, error: error instanceof Error ? error.message : 'Web page scrape failed' }
   }
 }

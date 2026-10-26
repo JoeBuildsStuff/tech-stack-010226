@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { XIcon, MessagesSquare } from "lucide-react";
 
@@ -15,7 +16,9 @@ export function ChatBubble() {
     setMaximized,
     layoutMode,
     setLayoutMode,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({ isOpen: state.isOpen, isMinimized: state.isMinimized, isMaximized: state.isMaximized, setOpen: state.setOpen, setMinimized: state.setMinimized, setMaximized: state.setMaximized, layoutMode: state.layoutMode, setLayoutMode: state.setLayoutMode }))
+  );
 
   const handleToggle = () => {
     if (!isOpen) {

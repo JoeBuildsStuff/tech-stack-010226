@@ -1,18 +1,17 @@
 import type { Json } from "@/types/supabase";
+import type {
+  ChatAction,
+  ChatMessagePart,
+  ChatMessageStatus,
+  ChatRole,
+  ChatSettings,
+  ChatTurnMode,
+  ChatTurnRequest,
+  Citation,
+  PageContext,
+} from "@/lib/chat/contracts";
 
-export type ChatTurnMode = "new" | "edit" | "retry";
-export type ChatMessageStatus =
-  | "pending"
-  | "streaming"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface ChatSettings {
-  reasoningEffort?: string | null;
-  webSearchEnabled: boolean;
-  [key: string]: Json | undefined;
-}
+export type { ChatMessageStatus, ChatSettings, ChatTurnMode };
 
 export interface PersistedAttachmentInput {
   name: string;
@@ -38,12 +37,12 @@ export interface PersistedChatMessage {
   id: string;
   sessionId: string;
   parentId: string | null;
-  role: "user" | "assistant" | "system";
+  role: ChatRole;
   content: string;
-  reasoning: string | null;
+  /** Ordered reply steps; rows saved before parts existed are reconstructed. */
+  parts: ChatMessagePart[];
   context: Json | null;
-  functionResult: Json | null;
-  citations: Json | null;
+  citations: Citation[];
   createdAt: string;
   seq: number;
   turnId: string | null;
@@ -54,8 +53,7 @@ export interface PersistedChatMessage {
   variantGroupId: string | null;
   variantIndex: number;
   attachments: PersistedAttachment[];
-  toolCalls: Json[];
-  suggestedActions: Json[];
+  suggestedActions: ChatAction[];
 }
 
 export interface ChatBranchInfo {
@@ -92,7 +90,8 @@ export interface BeginChatTurnInput {
   attachments?: PersistedAttachmentInput[];
   turnId?: string | null;
   accountId?: string | null;
-  context?: Json | null;
+  context?: PageContext | null;
+  request?: ChatTurnRequest;
 }
 
 export interface BeginChatTurnResult {
@@ -104,28 +103,27 @@ export interface BeginChatTurnResult {
   parentId: string | null;
   model: string;
   settings: ChatSettings;
+  /** True when this turn ID was already begun (an idempotent resend). */
+  existing: boolean;
   userMessage: PersistedChatMessage;
+  /** Completed messages before the user message, oldest first. */
   history: PersistedChatMessage[];
 }
 
-export interface CompleteChatTurnInput {
-  sessionId: string;
-  turnId: string;
-  assistantMessageId: string;
-  content: string;
-  reasoning?: string | null;
-  citations?: Json | null;
-  functionResult?: Json | null;
-  toolCalls?: Json[];
-  suggestedActions?: Json[];
-  accountId?: string | null;
+/** First message on the stream that starts a turn. */
+export interface TurnStartMessage {
+  type: "turn";
+  turn: BeginChatTurnResult;
 }
 
-export interface FailChatTurnInput {
+export interface ChatTurnRecord {
+  id: string;
   sessionId: string;
-  turnId: string;
-  assistantMessageId: string;
-  status: "failed" | "cancelled";
-  error?: string | null;
-  accountId?: string | null;
+  status: ChatMessageStatus;
+  model: string;
+  settings: ChatSettings;
+  request: ChatTurnRequest;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  error: string | null;
 }

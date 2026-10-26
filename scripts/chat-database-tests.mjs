@@ -33,7 +33,8 @@ const begin = (
   model = "grok-4.5",
   settings = { reasoningEffort: "high", webSearchEnabled: false },
   turnId = randomUUID(),
-  attachments = []
+  attachments = [],
+  request = {}
 ) =>
   rpc("begin_chat_turn", [
     sid,
@@ -45,8 +46,15 @@ const begin = (
     turnId,
     null,
     attachments,
+    request,
   ]);
-const complete = (turn, content = "answer", tools = [], actions = []) =>
+const complete = (
+  turn,
+  content = "answer",
+  tools = [],
+  actions = [],
+  parts = null
+) =>
   rpc("complete_chat_turn", [
     turn.sessionId,
     turn.turnId,
@@ -57,7 +65,22 @@ const complete = (turn, content = "answer", tools = [], actions = []) =>
     null,
     tools,
     actions,
+    parts,
   ]);
+const progress = (turn, parts, status = "streaming") =>
+  rpc("save_chat_turn_progress", [
+    turn.sessionId,
+    turn.turnId,
+    turn.assistantMessageId,
+    parts,
+    parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.text)
+      .join(""),
+    status,
+  ]);
+const row = async (table, id, columns = "*") =>
+  (await q(`select ${columns} from tech_stack_2026.${table} where id=$1`, [id]))[0];
 const leaf = async (sid) =>
   (
     await q(
@@ -99,6 +122,12 @@ before(async () => {
   await db.exec(
     readFileSync(
       "supabase/migrations/20260906235033_restrict_chat_turn_rpc_access.sql",
+      "utf8"
+    )
+  );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/20261025120000_server_owned_chat_generation.sql",
       "utf8"
     )
   );
@@ -385,8 +414,9 @@ test("turn RPCs deny direct anon grants while retaining authenticated access", a
     has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_execute
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='tech_stack_2026' and p.proname in
-    ('begin_chat_turn','complete_chat_turn','fail_chat_turn','select_chat_branch','clear_chat_conversation')`);
-  assert.equal(functions.length, 5);
+    ('begin_chat_turn','complete_chat_turn','fail_chat_turn','select_chat_branch','clear_chat_conversation',
+     'save_chat_turn_progress','resume_chat_turn','expire_stale_chat_turns')`);
+  assert.equal(functions.length, 8);
   for (const fn of functions) {
     assert.equal(fn.anon_execute, false, fn.proname);
     assert.equal(fn.authenticated_execute, true, fn.proname);
@@ -400,5 +430,120 @@ test("turn RPCs deny direct anon grants while retaining authenticated access", a
     );
   } finally {
     await db.exec("set role authenticated");
+  }
+});
+
+const text = (value) => ({ type: "text", text: value });
+const askUser = (id, result) => ({
+  type: "tool",
+  toolCall: {
+    id,
+    name: "ask_user",
+    arguments: { questions: [{ question: "Which?", choices: ["a", "b"] }] },
+    ...(result ? { result } : {}),
+  },
+});
+
+test("progress checkpoints store ordered parts, request metadata and a heartbeat", async () => {
+  const sid = await session();
+  const request = { clientTz: "UTC", clientPath: "/dashboard" };
+  const turn = await begin(sid, "hi", "new", null, undefined, undefined, randomUUID(), [], request);
+  assert.deepEqual((await row("chat_turns", turn.turnId, "request")).request, request);
+  const parts = [
+    { type: "thinking", text: "plan", startedAt: 1, endedAt: 2 },
+    text("Hello"),
+  ];
+  assert.deepEqual(await progress(turn, parts), { status: "streaming" });
+  const message = await row("chat_messages", turn.assistantMessageId, "parts,content,status");
+  assert.deepEqual(message.parts, parts);
+  assert.equal(message.content, "Hello");
+  assert.equal(message.status, "streaming");
+  assert.ok((await row("chat_turns", turn.turnId, "heartbeat_at")).heartbeat_at);
+  const final = [...parts, text(" world")];
+  await complete(turn, "Hello world", [], [], final);
+  assert.deepEqual(
+    (await row("chat_messages", turn.assistantMessageId, "parts")).parts,
+    final
+  );
+});
+
+test("a stopped turn tells its generator to halt and keeps what streamed", async () => {
+  const sid = await session();
+  const turn = await begin(sid);
+  await progress(turn, [text("partial")]);
+  await rpc("fail_chat_turn", [sid, turn.turnId, turn.assistantMessageId, "cancelled", "Response stopped", null]);
+  assert.deepEqual(await progress(turn, [text("partial more")]), { status: "cancelled" });
+  const message = await row("chat_messages", turn.assistantMessageId, "content,status,parts");
+  assert.equal(message.status, "cancelled");
+  assert.equal(message.content, "partial");
+  assert.deepEqual(message.parts, [text("partial")]);
+});
+
+test("ask_user pauses a turn, an answer resumes it, and a new message skips it", async () => {
+  const sid = await session();
+  const turn = await begin(sid);
+  await progress(turn, [askUser("call_1")], "awaiting_input");
+  assert.equal((await row("chat_turns", turn.turnId, "status")).status, "awaiting_input");
+  // Completing straight from awaiting_input is not allowed.
+  await assert.rejects(() => complete(turn), /stopped/);
+  const answered = [askUser("call_1", { success: true, data: { answers: [] } })];
+  const resumed = await rpc("resume_chat_turn", [sid, turn.turnId, answered]);
+  assert.equal(resumed.status, "streaming");
+  assert.equal(resumed.assistantMessageId, turn.assistantMessageId);
+  await assert.rejects(
+    () => rpc("resume_chat_turn", [sid, turn.turnId, answered]),
+    /not waiting/
+  );
+  await complete(turn, "done", [], [], [...answered, text("done")]);
+
+  const paused = await begin(sid, "second");
+  await progress(paused, [askUser("call_2")], "awaiting_input");
+  const next = await begin(sid, "never mind");
+  assert.equal((await row("chat_turns", paused.turnId, "status")).status, "completed");
+  assert.equal(
+    (await row("chat_messages", paused.assistantMessageId, "status")).status,
+    "completed"
+  );
+  assert.equal(next.parentId, paused.assistantMessageId);
+  await complete(next);
+});
+
+test("stop works on a turn waiting for an answer", async () => {
+  const sid = await session();
+  const turn = await begin(sid);
+  await progress(turn, [askUser("call_3")], "awaiting_input");
+  await rpc("fail_chat_turn", [sid, turn.turnId, turn.assistantMessageId, "cancelled", "Response stopped", null]);
+  assert.equal((await row("chat_turns", turn.turnId, "status")).status, "cancelled");
+});
+
+test("turns whose generator stopped heartbeating expire; live ones do not", async () => {
+  const sid = await session();
+  const stale = await begin(sid);
+  await progress(stale, [text("half")]);
+  assert.equal(await rpc("expire_stale_chat_turns", [sid, 90]), 0);
+  await db.exec("reset role");
+  await q(
+    "update tech_stack_2026.chat_turns set heartbeat_at=now()-interval '5 minutes' where id=$1",
+    [stale.turnId]
+  );
+  await db.exec("set role authenticated");
+  assert.equal(await rpc("expire_stale_chat_turns", [sid, 90]), 1);
+  const message = await row("chat_messages", stale.assistantMessageId, "status,content");
+  assert.equal(message.status, "failed");
+  assert.equal(message.content, "half");
+  // The conversation can move on.
+  await complete(await begin(sid, "again"));
+});
+
+test("progress and resume reject other accounts", async () => {
+  const sid = await session();
+  const turn = await begin(sid);
+  await q("select set_config('request.jwt.claim.sub',$1,false)", [other]);
+  try {
+    await assert.rejects(() => progress(turn, [text("x")]), /not found/);
+    await assert.rejects(() => rpc("resume_chat_turn", [sid, turn.turnId, []]), /not found/);
+    await assert.rejects(() => rpc("expire_stale_chat_turns", [sid, 90]), /not found/);
+  } finally {
+    await q("select set_config('request.jwt.claim.sub',$1,false)", [owner]);
   }
 });

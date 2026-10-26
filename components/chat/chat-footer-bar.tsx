@@ -8,6 +8,7 @@ import { createChatSession } from "@/actions/chat";
 import { Button } from "@/components/ui/button";
 import { useHydrateOpenChatTabs } from "@/components/chat/use-hydrate-open-chat-tabs";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/hooks/use-chat";
 import { toast } from "sonner";
@@ -24,7 +25,6 @@ export function ChatFooterBar() {
     setMaximized,
     layoutMode,
     setLayoutMode,
-    sessions,
     setShowHistory,
     currentSessionId,
     openSessionIds,
@@ -35,7 +35,15 @@ export function ChatFooterBar() {
     accountId,
     accountEpoch,
     isAccountReady,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({ isOpen: state.isOpen, isMinimized: state.isMinimized, isMaximized: state.isMaximized, setOpen: state.setOpen, setMinimized: state.setMinimized, setMaximized: state.setMaximized, layoutMode: state.layoutMode, setLayoutMode: state.setLayoutMode, setShowHistory: state.setShowHistory, currentSessionId: state.currentSessionId, openSessionIds: state.openSessionIds, openSessionTab: state.openSessionTab, closeSessionTab: state.closeSessionTab, upsertSessionFromServer: state.upsertSessionFromServer, setCurrentSessionIdFromServer: state.setCurrentSessionIdFromServer, accountId: state.accountId, accountEpoch: state.accountEpoch, isAccountReady: state.isAccountReady }))
+  );
+  // Titles only: a streamed token replaces the session object but not these.
+  const sessionTitles = useChatStore(
+    useShallow((state) =>
+      Object.fromEntries(state.sessions.map((session) => [session.id, session.title]))
+    )
+  );
   const { loadConversation } = useChat();
   // Tracks whether a chat session is being created
   const [isCreating, setIsCreating] = useState(false);
@@ -145,8 +153,8 @@ export function ChatFooterBar() {
 
   // Prepare open sessions for tab rendering
   const openSessions = openSessionIds
-    .map((id) => sessions.find((s) => s.id === id))
-    .filter((s): s is NonNullable<typeof s> => s != null);
+    .filter((id) => id in sessionTitles)
+    .map((id) => ({ id, title: sessionTitles[id] }));
 
   return (
     // Main footer container.

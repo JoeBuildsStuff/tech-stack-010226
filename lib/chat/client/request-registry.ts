@@ -33,3 +33,7 @@ export function abortAllChatRequests() {
   for (const request of requests.values()) request.controller.abort();
   requests.clear();
 }
+
+export function getChatRequest(accountId: string, sessionId: string) {
+  return requests.get(key(accountId, sessionId)) ?? null;
+}

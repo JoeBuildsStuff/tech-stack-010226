@@ -1,4 +1,3 @@
-import type { Anthropic } from '@anthropic-ai/sdk'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
@@ -6,6 +5,7 @@ import { APP_SCHEMA } from '@/lib/supabase/app-schema'
 import { createClient } from '@/lib/supabase/server'
 import { createComment, createThread, listThreads } from '@/components/tiptap/lib/comments'
 import { createUniqueSlug, slugToDocumentPath } from '@/app/dashboard/notes/note-path'
+import type { ToolInput } from '@/lib/chat/tools/definitions'
 import type { ToolExecutionContext } from './index'
 const MAX_NOTE_CHARS = 20000
 const MAX_COMMENT_CHARS = 4000
@@ -45,8 +45,6 @@ const NOTE_ALLOWED_TAGS = [
   'div',
   'span',
 ]
-
-type ToolResult = Promise<{ success: boolean; data?: unknown; error?: string }>
 
 type OwnedNote = {
   id: string
@@ -180,14 +178,16 @@ async function normalizeNoteContent(content: string): Promise<string> {
   })
 }
 
-async function getAuthenticatedContext(): Promise<
+async function getAuthenticatedContext(
+  context?: ToolExecutionContext,
+): Promise<
   | {
       supabase: Awaited<ReturnType<typeof createClient>>
       userId: string
     }
   | { error: string }
 > {
-  const supabase = await createClient()
+  const supabase = context?.supabase ?? (await createClient())
   const {
     data: { user },
     error,
@@ -254,80 +254,18 @@ function safeCommentContent(content: string, maxChars: number) {
   }
 }
 
-export const notesGetNoteTool: Anthropic.Tool = {
-  name: 'notes_get_note',
-  description:
-    'Retrieve a note by ID, including title/content. Use this before summarizing or editing a note.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      noteId: {
-        type: 'string',
-        description: 'Note ID (the value in /dashboard/notes/{noteId}).',
-      },
-      maxChars: {
-        type: 'integer',
-        description: `Optional max characters of note content to return (1-${MAX_NOTE_CHARS}).`,
-      },
-    },
-    required: ['noteId'],
-  },
-}
-
-export const notesCreateNoteTool: Anthropic.Tool = {
-  name: 'notes_create_note',
-  description:
-    'Create a new note for the current user. Returns the created note ID, metadata, and URL.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      title: {
-        type: 'string',
-        description: 'Optional title for the new note. Defaults to "My Note".',
-      },
-      content: {
-        type: 'string',
-        description:
-          'Optional initial content for the new note. Markdown and HTML are accepted; content is saved as sanitized HTML.',
-      },
-    },
-    required: [],
-  },
-}
-
-export const notesListNotesTool: Anthropic.Tool = {
-  name: 'notes_list_notes',
-  description:
-    'List or count notes owned by the current user. Use this for questions like "how many notes do I have?" or "show my notes".',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      limit: {
-        type: 'integer',
-        description: `Maximum number of note summaries to return (1-${MAX_LIST_NOTES}). Defaults to 20.`,
-      },
-      includeNotes: {
-        type: 'boolean',
-        description:
-          'Whether to include note summaries. Defaults to true. Set false when only the total count is needed.',
-      },
-    },
-    required: [],
-  },
-}
-
 export async function executeNotesListNotes(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_list_notes">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const limit = clamp(asPositiveInteger(parameters.limit) ?? 20, 1, MAX_LIST_NOTES)
     const includeNotes =
       typeof parameters.includeNotes === 'boolean' ? parameters.includeNotes : true
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     let query = auth.supabase
@@ -346,7 +284,7 @@ export async function executeNotesListNotes(
     const { data, error, count } = await query
 
     if (error) {
-      return { success: false, error: error.message }
+      return { success: false as const, error: error.message }
     }
 
     const notes = includeNotes
@@ -360,7 +298,7 @@ export async function executeNotesListNotes(
       : []
 
     return {
-      success: true,
+      success: true as const,
       data: {
         totalNotes: count ?? notes.length,
         returnedNotes: notes.length,
@@ -370,20 +308,20 @@ export async function executeNotesListNotes(
   } catch (error) {
     console.error('notes_list_notes execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
 export async function executeNotesCreateNote(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_create_note">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const rawTitle = typeof parameters.title === 'string' ? parameters.title.trim() : ''
@@ -398,7 +336,7 @@ export async function executeNotesCreateNote(
       .eq('user_id', auth.userId)
 
     if (existingError) {
-      return { success: false, error: existingError.message }
+      return { success: false as const, error: existingError.message }
     }
 
     const documentPath = slugToDocumentPath(
@@ -424,11 +362,11 @@ export async function executeNotesCreateNote(
       .single()
 
     if (createError || !created) {
-      return { success: false, error: createError?.message ?? 'Failed to create note' }
+      return { success: false as const, error: createError?.message ?? 'Failed to create note' }
     }
 
     return {
-      success: true,
+      success: true as const,
       data: {
         note: {
           id: created.id,
@@ -443,39 +381,39 @@ export async function executeNotesCreateNote(
   } catch (error) {
     console.error('notes_create_note execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
 export async function executeNotesGetNote(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_get_note">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
-      return { success: false, error: 'noteId is required' }
+      return { success: false as const, error: 'noteId is required' }
     }
 
     const maxChars = clamp(asPositiveInteger(parameters.maxChars) ?? MAX_NOTE_CHARS, 1, MAX_NOTE_CHARS)
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const note = await getOwnedNote(auth.supabase, auth.userId, noteId)
     if (!note) {
-      return { success: false, error: 'Note not found' }
+      return { success: false as const, error: 'Note not found' }
     }
 
     const content = note.content ?? ''
     const truncated = truncateText(content, maxChars)
 
     return {
-      success: true,
+      success: true as const,
       data: {
         note: {
           id: note.id,
@@ -492,48 +430,20 @@ export async function executeNotesGetNote(
   } catch (error) {
     console.error('notes_get_note execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
-export const notesGetCommentsTool: Anthropic.Tool = {
-  name: 'notes_get_comments',
-  description:
-    'Retrieve comment threads for a note, including replies and resolved/unresolved status.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      noteId: {
-        type: 'string',
-        description: 'Note ID (the value in /dashboard/notes/{noteId}).',
-      },
-      includeResolved: {
-        type: 'boolean',
-        description: 'Include resolved threads. Defaults to true.',
-      },
-      limitThreads: {
-        type: 'integer',
-        description: `Maximum number of threads to return (1-${MAX_THREADS}). Defaults to 50.`,
-      },
-      maxCharsPerComment: {
-        type: 'integer',
-        description: `Maximum comment content size in chars per comment (1-${MAX_COMMENT_CHARS}). Defaults to ${MAX_COMMENT_CHARS}.`,
-      },
-    },
-    required: ['noteId'],
-  },
-}
-
 export async function executeNotesGetComments(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_get_comments">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
-      return { success: false, error: 'noteId is required' }
+      return { success: false as const, error: 'noteId is required' }
     }
 
     const includeResolved =
@@ -545,14 +455,14 @@ export async function executeNotesGetComments(
       MAX_COMMENT_CHARS,
     )
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const note = await getOwnedNote(auth.supabase, auth.userId, noteId)
     if (!note) {
-      return { success: false, error: 'Note not found' }
+      return { success: false as const, error: 'Note not found' }
     }
 
     const allThreads = await listThreads(noteId, auth.userId)
@@ -583,7 +493,7 @@ export async function executeNotesGetComments(
     const totalComments = filteredThreads.reduce((sum, thread) => sum + thread.comments.length, 0)
 
     return {
-      success: true,
+      success: true as const,
       data: {
         noteId,
         noteTitle: note.title ?? 'Untitled',
@@ -598,62 +508,37 @@ export async function executeNotesGetComments(
   } catch (error) {
     console.error('notes_get_comments execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
-export const notesUpdateNoteTool: Anthropic.Tool = {
-  name: 'notes_update_note',
-  description:
-    'Update note title and/or content for a note you own.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      noteId: {
-        type: 'string',
-        description: 'Note ID (the value in /dashboard/notes/{noteId}).',
-      },
-      title: {
-        type: 'string',
-        description: 'Updated note title.',
-      },
-      content: {
-        type: 'string',
-        description:
-          'Updated full note content (replaces existing content). Markdown and HTML are accepted; content is saved as sanitized HTML.',
-      },
-    },
-    required: ['noteId'],
-  },
-}
-
 export async function executeNotesUpdateNote(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_update_note">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const noteId = asString(parameters.noteId)
     if (!noteId) {
-      return { success: false, error: 'noteId is required' }
+      return { success: false as const, error: 'noteId is required' }
     }
 
     const titleProvided = typeof parameters.title === 'string'
     const contentProvided = typeof parameters.content === 'string'
 
     if (!titleProvided && !contentProvided) {
-      return { success: false, error: 'At least one of title or content must be provided' }
+      return { success: false as const, error: 'At least one of title or content must be provided' }
     }
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const note = await getOwnedNote(auth.supabase, auth.userId, noteId)
     if (!note) {
-      return { success: false, error: 'Note not found' }
+      return { success: false as const, error: 'Note not found' }
     }
 
     const payload: {
@@ -683,11 +568,11 @@ export async function executeNotesUpdateNote(
       .single()
 
     if (error || !updated) {
-      return { success: false, error: error?.message ?? 'Failed to update note' }
+      return { success: false as const, error: error?.message ?? 'Failed to update note' }
     }
 
     return {
-      success: true,
+      success: true as const,
       data: {
         note: {
           id: updated.id,
@@ -702,60 +587,35 @@ export async function executeNotesUpdateNote(
   } catch (error) {
     console.error('notes_update_note execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
-export const notesAddCommentTool: Anthropic.Tool = {
-  name: 'notes_add_comment',
-  description:
-    'Create a new comment thread on a note. This starts a top-level comment (not a reply). Without anchorText, the comment attaches to the document (no text highlight).',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      noteId: {
-        type: 'string',
-        description: 'Note ID (the value in /dashboard/notes/{noteId}).',
-      },
-      content: {
-        type: 'string',
-        description: 'Comment content for the new thread.',
-      },
-      anchorText: {
-        type: 'string',
-        description:
-          'Optional text to attach the thread to. When omitted, the comment is document-level with no highlight.',
-      },
-    },
-    required: ['noteId', 'content'],
-  },
-}
-
 export async function executeNotesAddComment(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_add_comment">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const noteId = asString(parameters.noteId)
     const content = asString(parameters.content)
 
     if (!noteId) {
-      return { success: false, error: 'noteId is required' }
+      return { success: false as const, error: 'noteId is required' }
     }
     if (!content) {
-      return { success: false, error: 'content is required' }
+      return { success: false as const, error: 'content is required' }
     }
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const note = await getOwnedNote(auth.supabase, auth.userId, noteId)
     if (!note) {
-      return { success: false, error: 'Note not found' }
+      return { success: false as const, error: 'Note not found' }
     }
 
     const plainNote = stripHtml(note.content ?? '')
@@ -802,7 +662,7 @@ export async function executeNotesAddComment(
     const rootComment = thread.comments[0]
 
     return {
-      success: true,
+      success: true as const,
       data: {
         noteId,
         threadId: thread.id,
@@ -815,63 +675,39 @@ export async function executeNotesAddComment(
   } catch (error) {
     console.error('notes_add_comment execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
-export const notesReplyToCommentTool: Anthropic.Tool = {
-  name: 'notes_reply_to_comment',
-  description:
-    'Add a reply to an existing comment thread on a note.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      noteId: {
-        type: 'string',
-        description: 'Note ID (the value in /dashboard/notes/{noteId}).',
-      },
-      threadId: {
-        type: 'string',
-        description: 'Thread ID to reply to.',
-      },
-      content: {
-        type: 'string',
-        description: 'Reply content.',
-      },
-    },
-    required: ['noteId', 'threadId', 'content'],
-  },
-}
-
 export async function executeNotesReplyToComment(
-  parameters: Record<string, unknown>,
+  parameters: ToolInput<"notes_reply_to_comment">,
   context?: ToolExecutionContext,
-): ToolResult {
+) {
   try {
     const noteId = asString(parameters.noteId)
     const threadId = asString(parameters.threadId)
     const content = asString(parameters.content)
 
     if (!noteId) {
-      return { success: false, error: 'noteId is required' }
+      return { success: false as const, error: 'noteId is required' }
     }
     if (!threadId) {
-      return { success: false, error: 'threadId is required' }
+      return { success: false as const, error: 'threadId is required' }
     }
     if (!content) {
-      return { success: false, error: 'content is required' }
+      return { success: false as const, error: 'content is required' }
     }
 
-    const auth = await getAuthenticatedContext()
+    const auth = await getAuthenticatedContext(context)
     if ('error' in auth) {
-      return { success: false, error: auth.error }
+      return { success: false as const, error: auth.error }
     }
 
     const note = await getOwnedNote(auth.supabase, auth.userId, noteId)
     if (!note) {
-      return { success: false, error: 'Note not found' }
+      return { success: false as const, error: 'Note not found' }
     }
 
     const comment = await createComment({
@@ -882,7 +718,7 @@ export async function executeNotesReplyToComment(
     })
 
     return {
-      success: true,
+      success: true as const,
       data: {
         noteId,
         threadId,
@@ -895,7 +731,7 @@ export async function executeNotesReplyToComment(
   } catch (error) {
     console.error('notes_reply_to_comment execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }

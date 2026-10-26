@@ -1,6 +1,6 @@
 # Chat architecture: remaining enhancements
 
-Updated: September 6, 2026.
+Updated: October 25, 2026. E1, E2 and most of E4/E5 were completed on the `chat-server-generation` branch; deployed verification (E8) is still open for that work.
 
 This backlog reconciles the initial assessment of `app/api/chat/`, `components/chat/` and their supporting code with the account isolation, request scoping and durable conversation work subsequently implemented. Priorities indicate recommended implementation order. Checkboxes reflect verified completion; partial verification is recorded separately.
 
@@ -27,10 +27,10 @@ The architectural recommendation is only partly complete: client transport/SSE a
 
 **Problem:** A pending turn is durable, but generation and completion are coordinated by [use-chat](../../hooks/use-chat.tsx). Closing the tab can leave a pending record and lose an unsaved response. Explicit retry now recovers the interaction; it does not resume or finish the original generation automatically.
 
-- [ ] Move generation and final persistence into a server-owned lifecycle keyed by the persisted turn ID. Choose a worker/job mechanism only after defining required execution duration and disconnect behavior.
-- [ ] Let the browser observe/reconnect to a turn without owning its completion.
-- [ ] Define abandoned-turn detection, cancellation and retry semantics. Prevent duplicate execution and repeated tool side effects.
-- [ ] Record failures after disconnect and make their state recoverable when the conversation is reopened.
+- [x] Move generation and final persistence into a server-owned lifecycle keyed by the persisted turn ID. Choose a worker/job mechanism only after defining required execution duration and disconnect behavior. _Done October 25, 2026: `lib/chat/server/turn-runner.ts` runs in-process, kept alive with `after()` up to `maxDuration` (300 s); no external job queue._
+- [x] Let the browser observe/reconnect to a turn without owning its completion.
+- [x] Define abandoned-turn detection, cancellation and retry semantics. Prevent duplicate execution and repeated tool side effects. _Heartbeat every ≤20 s; `expire_stale_chat_turns` fails turns silent for 90 s. Nothing re-runs a turn automatically, so tools never execute twice; retry is explicit._
+- [x] Record failures after disconnect and make their state recoverable when the conversation is reopened.
 
 **Done when:** Closing/reopening a tab during generation exposes a completed or explicitly failed turn without duplicating messages or tool effects. Server restart, timeout and stop-versus-complete behavior have integration coverage.
 
@@ -38,13 +38,13 @@ The architectural recommendation is only partly complete: client transport/SSE a
 
 **Problem:** Correct branch selection and saved retry settings do not guarantee faithful provider input. Provider conversion still reduces historical messages primarily to role/text, and non-image attachments often contribute metadata rather than document contents. The transport also truncates history to ten messages, which can sever relevant context or tool exchanges.
 
-Relevant code: [transport](../../lib/chat/client/transport.ts), [OpenAI](../../app/api/chat/openai/route.ts), [Anthropic](../../app/api/chat/anthropic/route.ts), [Cerebras](../../app/api/chat/cerebras/route.ts), [xAI](../../app/api/chat/xai/route.ts).
+Relevant code: [history](../../lib/chat/server/history.ts), [providers](../../lib/chat/server/providers/).
 
-- [ ] Define a canonical history representation for text, attachments, tool calls and tool results, with stable call IDs where required by a provider.
-- [ ] Convert that representation into each provider's supported input format, retaining valid call/result pairs.
-- [ ] Resolve historical attachments securely; implement bounded file extraction or native document input for supported formats.
-- [ ] Show an explicit unsupported-format message instead of implying that a filename means the document was read.
-- [ ] Replace the arbitrary ten-message cut with a documented context-budget policy that preserves coherent exchanges.
+- [x] Define a canonical history representation for text, attachments, tool calls and tool results, with stable call IDs where required by a provider.
+- [x] Convert that representation into each provider's supported input format, retaining valid call/result pairs.
+- [x] Resolve historical attachments securely; implement bounded file extraction or native document input for supported formats. _Images and PDFs are sent natively where the provider supports them; text files are inlined (400k characters each)._
+- [x] Show an explicit unsupported-format message instead of implying that a filename means the document was read.
+- [x] Replace the arbitrary ten-message cut with a documented context-budget policy that preserves coherent exchanges. _By decision the full selected history is sent with no budget; see lib/chat/README.md._
 
 **Done when:** A later turn can answer a question about a previously attached supported document and use a prior tool result. Provider contract tests prove that the new prompt appears once and edit/retry preserve the intended branch and settings.
 
@@ -56,7 +56,7 @@ Relevant code: [transport](../../lib/chat/client/transport.ts), [OpenAI](../../a
 - [ ] Validate provider/model compatibility and supported reasoning/search settings against server-owned configuration.
 - [ ] Enforce actual file size/type/count and aggregate request/history limits at the generation boundary, including direct multipart requests.
 - [ ] Add application-level per-account rate/concurrency limits and consistent error responses.
-- [ ] When integrating E1, derive provider history from the owned persisted turn rather than treating client-supplied history as canonical.
+- [x] When integrating E1, derive provider history from the owned persisted turn rather than treating client-supplied history as canonical.
 
 **Done when:** Malformed JSON, invalid roles/models/settings, oversized history, forged attachment metadata and excessive requests fail consistently before a provider call. Tests exercise direct endpoint calls as well as UI submissions.
 
@@ -64,12 +64,12 @@ Relevant code: [transport](../../lib/chat/client/transport.ts), [OpenAI](../../a
 
 **Problem:** Client transport and server persistence now have dedicated modules, but the provider routes still contain substantial parsing, prompts, tool loops and streaming machinery. Shared message types originate in the client store, the hook imports its attachment type from the composer, and note tools import persistence helpers from component folders.
 
-- [ ] Add shared chat contracts outside the client store and UI, including attachment, message, request, response and stream-event definitions.
-- [ ] Reconcile [types/chat.ts](../../types/chat.ts), [conversation types](../../lib/chat/conversation-types.ts), store types and transport types; remove obsolete context/hook interfaces.
-- [ ] Move provider conversion and SDK interaction into `lib/chat/server/providers/`, leaving thin authenticated, validated HTTP routes.
-- [ ] Extract common parsing, response/error envelopes and tool-loop orchestration while retaining genuine provider differences.
-- [ ] Move [tool registration](../../app/api/chat/tools/index.ts) and adapters into `lib/chat/server/tools/`.
-- [ ] Move reusable note/comment persistence into a domain service used by both the editor and [note tools](../../app/api/chat/tools/note-tools.ts); server/domain code should not depend on component placement.
+- [x] Add shared chat contracts outside the client store and UI, including attachment, message, request, response and stream-event definitions.
+- [x] Reconcile [types/chat.ts](../../types/chat.ts), [conversation types](../../lib/chat/conversation-types.ts), store types and transport types; remove obsolete context/hook interfaces. _`types/chat.ts` was removed; `lib/chat/contracts.ts` is the single source._
+- [x] Move provider conversion and SDK interaction into `lib/chat/server/providers/`, leaving thin authenticated, validated HTTP routes.
+- [x] Extract common parsing, response/error envelopes and tool-loop orchestration while retaining genuine provider differences.
+- [x] Move [tool registration](../../lib/chat/server/tools/index.ts) and adapters into `lib/chat/server/tools/`.
+- [ ] Move reusable note/comment persistence into a domain service used by both the editor and [note tools](../../lib/chat/server/tools/note-tools.ts); server/domain code should not depend on component placement.
 
 **Done when:** Shared contracts can be imported without importing UI/store modules; provider adapters can be tested independently of Next.js requests; HTTP routes contain boundary concerns rather than application orchestration.
 
@@ -79,9 +79,9 @@ Relevant code: [transport](../../lib/chat/client/transport.ts), [OpenAI](../../a
 
 Relevant code: [store](../../lib/chat/chat-store.ts), [message list](../../components/chat/chat-messages-list.tsx), [composer](../../components/chat/chat-input.tsx), [header](../../components/chat/chat-header.tsx), [history](../../components/chat/chat-history.tsx), [tab hydration](../../components/chat/use-hydrate-open-chat-tabs.ts).
 
-- [ ] Replace broad subscriptions with selectors for the fields each component actually renders.
-- [ ] Remove unused local mutation APIs, legacy quota/storage recovery helpers and duplicate state where safe. Clearly distinguish updating a cached view from persisting a conversation mutation.
-- [ ] Keep UI preferences separate from transcript/request state and avoid serializing unrelated state during token updates.
+- [x] Replace broad subscriptions with selectors for the fields each component actually renders.
+- [x] Remove unused local mutation APIs, legacy quota/storage recovery helpers and duplicate state where safe. Clearly distinguish updating a cached view from persisting a conversation mutation.
+- [x] Keep UI preferences separate from transcript/request state and avoid serializing unrelated state during token updates.
 - [ ] Profile realistic streaming transcripts; batch rendering updates or virtualize long histories only where measurements justify it.
 
 **Done when:** A delta in session A does not rerender unrelated controls or session B's transcript, transcripts never enter localStorage, and production mutation callers use the durable action path.

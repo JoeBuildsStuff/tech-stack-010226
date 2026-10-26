@@ -1,14 +1,13 @@
-# Chat API Tools
+# Chat Tools
 
-This directory contains tool definitions and execution logic for the chat API.
+Model-facing tool definitions (name, description, Zod input schema) live in `lib/chat/tools/definitions.ts`, shared by the server and the UI. This directory holds the server executors.
 
 ## Structure
 
-- `index.ts` - Exports all enabled tools and executor mapping
+- `index.ts` - Executor map (typed against the definitions), provider tool specs, and `executeTool`, which validates arguments before running
 - `note-tools.ts` - Note-specific tools (create/list/read/update note, read/add/reply comments)
 - `firecrawl-tools.ts` - Firecrawl `web_search` / `web_scrape` providers
 - `jina-tools.ts` - Jina AI `web_search` / `web_scrape` providers
-- `template-tool.ts` - Optional template for creating additional tools
 - `README.md` - Documentation
 
 ## Enabled Tools
@@ -50,74 +49,51 @@ Provider selection:
 
 Note tools enforce Supabase auth and only operate on notes owned by the current user. Web search tools run server-side with bounded inputs and never expose API keys to the client.
 
+- `ask_user` (client tool, no executor)
+  - Input: 1-4 `questions`, each with 2-4 `choices`
+  - Output: the user's `answers`; the turn pauses until the user answers in the chat UI
+
 ## Notes Page Context
 
-The chat client now sends `client_path` (current URL path) to chat APIs.  
-System prompts include this path, so if the user is on `/dashboard/notes/{id}`, models can infer `noteId` for tool calls.
+The chat client sends its current path with each turn. System prompts include this path, so if the user is on `/dashboard/notes/{id}`, models can infer `noteId` for tool calls.
 
 ## Adding New Tools
 
-1. Create a file in this directory (example: `my-tool.ts`)
-2. Define tool schema + executor:
+1. Add a definition to `toolDefinitions` in `lib/chat/tools/definitions.ts`:
 
 ```typescript
-import type { Anthropic } from '@anthropic-ai/sdk'
-
-export const myTool: Anthropic.Tool = {
-  name: 'my_tool_name',
+my_tool: serverTool({
   description: 'Description of what this tool does',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      param1: {
-        type: 'string',
-        description: 'Description of parameter 1',
-      },
-    },
-    required: ['param1'],
-  },
-}
+  input: z.object({
+    param1: z.string().describe('Description of parameter 1'),
+  }),
+}),
+```
 
-export async function executeMyTool(
-  parameters: Record<string, unknown>
-): Promise<{ success: boolean; data?: unknown; error?: string }> {
+2. Write the executor in this directory. Its input type comes from the schema; its output type is inferred from what it returns, so keep `success` literal:
+
+```typescript
+import type { ToolInput } from '@/lib/chat/tools/definitions'
+
+export async function executeMyTool(parameters: ToolInput<'my_tool'>) {
   try {
-    // Your tool logic here
-    const result = await someFunction(parameters)
-    return { success: true, data: result }
+    const result = await someFunction(parameters.param1)
+    return { success: true as const, data: result }
   } catch (error) {
-    console.error('My tool execution error:', error)
     return {
-      success: false,
+      success: false as const,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 ```
 
-3. Register it in `index.ts`:
+3. Register it in `serverToolExecutors` in `index.ts`. The map is checked against the definitions, so a missing or mistyped executor is a build error.
 
-```typescript
-import { myTool, executeMyTool } from './my-tool'
+The UI reads typed calls as `ChatToolCall` (`lib/chat/contracts.ts`): narrowing on `toolCall.name === 'my_tool'` types `toolCall.arguments` and `toolCall.result.data`.
 
-export const availableTools: Anthropic.Tool[] = [
-  notesGetNoteTool,
-  myTool,
-]
-
-export const toolExecutors: Record<string, ...> = {
-  notes_get_note: executeNotesGetNote,
-  my_tool_name: executeMyTool,
-}
-```
+For a tool the user answers in the UI, use `clientTool({ description, input, output })` instead and leave it out of the executor map. The turn pauses in `awaiting_input` when the model calls it; the answer route validates the user's answer against `output`.
 
 ## Tool Format
 
-Tools use the Anthropic tool schema format, which is compatible with:
-- Anthropic Claude (via `route.ts`)
-- OpenAI (converted in `openai/route.ts`)
-- Cerebras (converted in `cerebras/route.ts`)
-
-Each tool needs:
-1. **Definition** – `name`, `description`, and `input_schema` (JSON Schema)
-2. **Executor** – An async function that receives parameters and returns `{ success, data?, error? }`
+Provider schemas are generated from the Zod definitions as JSON Schema, then shaped for each provider by its adapter in `lib/chat/server/providers/`.

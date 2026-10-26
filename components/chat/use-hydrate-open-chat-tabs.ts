@@ -3,22 +3,27 @@
 import { useEffect, useMemo, useRef } from "react";
 import { getChatSessionSummariesByIds } from "@/actions/chat";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 
 export function useHydrateOpenChatTabs() {
   const {
-    sessions,
     openSessionIds,
     closeSessionTab,
     upsertSessionFromServer,
     accountId,
     accountEpoch,
     isAccountReady,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({ openSessionIds: state.openSessionIds, closeSessionTab: state.closeSessionTab, upsertSessionFromServer: state.upsertSessionFromServer, accountId: state.accountId, accountEpoch: state.accountEpoch, isAccountReady: state.isAccountReady }))
+  );
+  const sessionIds = useChatStore(
+    useShallow((state) => state.sessions.map((session) => session.id))
+  );
 
   const missingOpenSessionIds = useMemo(() => {
-    const hydratedSessionIds = new Set(sessions.map((session) => session.id));
+    const hydratedSessionIds = new Set(sessionIds);
     return openSessionIds.filter((id) => !hydratedSessionIds.has(id));
-  }, [openSessionIds, sessions]);
+  }, [openSessionIds, sessionIds]);
 
   const requestedKeysRef = useRef<Set<string>>(new Set());
 

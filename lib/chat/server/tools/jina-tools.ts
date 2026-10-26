@@ -1,4 +1,4 @@
-import type { Anthropic } from '@anthropic-ai/sdk'
+import type { ToolInput } from '@/lib/chat/tools/definitions'
 
 // Get your Jina AI API key for free: https://jina.ai/?sui=apikey
 const JINA_SEARCH_URL = 'https://s.jina.ai/'
@@ -10,8 +10,6 @@ const DEFAULT_SCRAPE_CHARS = 12000
 const MAX_SCRAPE_CHARS = 30000
 const JINA_TIMEOUT_MS = 60000
 const RERANK_MODEL = 'jina-reranker-v3.5'
-
-type ToolResult = Promise<{ success: boolean; data?: unknown; error?: string }>
 
 type JinaSearchResult = {
   title?: string
@@ -164,55 +162,11 @@ async function rerankResults(
     .filter((result): result is { title: string; url: string; description: string } => Boolean(result))
 }
 
-export const jinaSearchTool: Anthropic.Tool = {
-  name: 'web_search',
-  description:
-    'Search the live web with Jina AI. Use for current, time-sensitive, or externally verifiable information. Returns source titles, URLs, and descriptions; cite the returned URLs in the final response.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      query: {
-        type: 'string',
-        description: 'Search query, up to 500 characters.',
-      },
-      limit: {
-        type: 'integer',
-        description: `Number of results to return (1-${MAX_SEARCH_LIMIT}, default ${DEFAULT_SEARCH_LIMIT}).`,
-      },
-      site: {
-        type: 'string',
-        description: 'Optional domain to restrict search results to (e.g. example.com).',
-      },
-    },
-    required: ['query'],
-  },
-}
-
-export const jinaScrapeTool: Anthropic.Tool = {
-  name: 'web_scrape',
-  description:
-    'Read the main content of a public web page with Jina AI Reader and return clean Markdown. Use after web_search when result descriptions are insufficient. Cite the page URL in the final response.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      url: {
-        type: 'string',
-        description: 'Public HTTP or HTTPS URL to read.',
-      },
-      maxChars: {
-        type: 'integer',
-        description: `Maximum Markdown characters to return (1-${MAX_SCRAPE_CHARS}, default ${DEFAULT_SCRAPE_CHARS}).`,
-      },
-    },
-    required: ['url'],
-  },
-}
-
-export async function executeJinaSearch(parameters: Record<string, unknown>): ToolResult {
+export async function executeJinaSearch(parameters: ToolInput<"web_search">) {
   try {
     const query = asString(parameters.query)
-    if (!query) return { success: false, error: 'query is required' }
-    if (query.length > 500) return { success: false, error: 'query must be 500 characters or fewer' }
+    if (!query) return { success: false as const, error: 'query is required' }
+    if (query.length > 500) return { success: false as const, error: 'query must be 500 characters or fewer' }
 
     const limit = clampInteger(parameters.limit, DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT)
     const site = asString(parameters.site)
@@ -239,17 +193,17 @@ export async function executeJinaSearch(parameters: Record<string, unknown>): To
       console.warn('Jina rerank skipped:', error)
     }
 
-    return { success: true, data: { query, results: results.slice(0, limit) } }
+    return { success: true as const, data: { query, results: results.slice(0, limit) } }
   } catch (error) {
     console.error('Jina search error:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Web search failed' }
+    return { success: false as const, error: error instanceof Error ? error.message : 'Web search failed' }
   }
 }
 
-export async function executeJinaScrape(parameters: Record<string, unknown>): ToolResult {
+export async function executeJinaScrape(parameters: ToolInput<"web_scrape">) {
   try {
     const url = validatePublicUrl(parameters.url)
-    if (!url) return { success: false, error: 'A valid public HTTP or HTTPS URL is required' }
+    if (!url) return { success: false as const, error: 'A valid public HTTP or HTTPS URL is required' }
 
     const maxChars = clampInteger(parameters.maxChars, DEFAULT_SCRAPE_CHARS, MAX_SCRAPE_CHARS)
     const data = await jinaRequest<JinaReaderData>(
@@ -263,7 +217,7 @@ export async function executeJinaScrape(parameters: Record<string, unknown>): To
     const markdown = truncate(data.content || '', maxChars)
 
     return {
-      success: true,
+      success: true as const,
       data: {
         title: data.title || url,
         url: data.url || url,
@@ -274,6 +228,6 @@ export async function executeJinaScrape(parameters: Record<string, unknown>): To
     }
   } catch (error) {
     console.error('Jina scrape error:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Web page scrape failed' }
+    return { success: false as const, error: error instanceof Error ? error.message : 'Web page scrape failed' }
   }
 }

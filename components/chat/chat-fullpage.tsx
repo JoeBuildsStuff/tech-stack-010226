@@ -1,9 +1,11 @@
 "use client";
 
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { useChat } from "@/hooks/use-chat";
 import { ChatMessagesList } from "@/components/chat/chat-messages-list";
 import { ChatInput } from "@/components/chat/chat-input";
+import { ChatQuestionCard } from "@/components/chat/chat-question-card";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -17,7 +19,13 @@ import { PictureInPicture2, PanelRight, LaptopMinimal } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export function ChatFullPage() {
-  const { setLayoutMode, currentSessionId, accountId } = useChatStore();
+  const {
+    setLayoutMode,
+    currentSessionId,
+    accountId,
+  } = useChatStore(
+    useShallow((state) => ({ setLayoutMode: state.setLayoutMode, currentSessionId: state.currentSessionId, accountId: state.accountId }))
+  );
   const router = useRouter();
 
   const { handleActionClick } = useChat({
@@ -133,6 +141,7 @@ export function ChatFullPage() {
         </div>
         {/* Input Area */}
         <div className="">
+          <ChatQuestionCard />
           <ChatInput key={`${accountId}:${currentSessionId}`} />
         </div>
       </div>

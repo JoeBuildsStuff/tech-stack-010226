@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ChatMessagePart, ToolCall } from "@/lib/chat/chat-store";
+import type { ChatMessagePart, ChatToolCall } from "@/lib/chat/contracts";
 import { cn } from "@/lib/utils";
 import {
   Trace,
@@ -17,7 +17,7 @@ import { formatToolCallResult } from "@/lib/chat/utils";
 type Step =
   | { kind: "thinking"; part: Extract<ChatMessagePart, { type: "thinking" }> }
   | { kind: "text"; text: string; index: number }
-  | { kind: "tools"; tools: ToolCall[] };
+  | { kind: "tools"; tools: ChatToolCall[] };
 
 interface ChatMessageTraceProps {
   parts: ChatMessagePart[];
@@ -61,7 +61,17 @@ function truncate(value: string, max = 48) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-export function describeToolCall(toolCall: ToolCall) {
+export function describeToolCall(toolCall: ChatToolCall) {
+  if (toolCall.name === "ask_user") {
+    const count = toolCall.arguments.questions?.length ?? 0;
+    const noun = count === 1 ? "question" : "questions";
+    return {
+      verb: toolCall.result ? "Asked" : "Asking",
+      object: `${count} ${noun}`,
+      detail: "",
+      groupKey: "asked questions",
+    };
+  }
   const tokens = toolCall.name.split(/[_\-.]/).filter(Boolean);
   const verbIndex = tokens.findIndex((token) => token.toLowerCase() in TOOL_VERBS);
   const verb = verbIndex >= 0 ? tokens[verbIndex].toLowerCase() : null;
@@ -153,7 +163,26 @@ function ThinkingStep({
   );
 }
 
-function ToolRow({ toolCall }: { toolCall: ToolCall }) {
+/** The user's answers to ask_user, read from the typed tool result. */
+function AskUserAnswers({
+  toolCall,
+}: {
+  toolCall: Extract<ChatToolCall, { name: "ask_user" }>;
+}) {
+  if (!toolCall.result?.success) return null;
+  return (
+    <dl className="flex flex-col gap-1 text-sm">
+      {toolCall.result.data.answers.map((answer, index) => (
+        <div key={index}>
+          <dt className="text-muted-foreground">{answer.question}</dt>
+          <dd className="text-foreground">{answer.answer}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ToolRow({ toolCall }: { toolCall: ChatToolCall }) {
   const { verb, object, detail } = describeToolCall(toolCall);
   const running = !toolCall.result;
   const failed = toolCall.result?.success === false;
@@ -179,9 +208,9 @@ function ToolRow({ toolCall }: { toolCall: ToolCall }) {
         </TraceLine>
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent className="mt-1.5 pl-0">
-        {toolCall.reasoning && (
-          <p className="text-sm whitespace-pre-wrap">{toolCall.reasoning}</p>
-        )}
+        {toolCall.name === "ask_user" ? (
+          <AskUserAnswers toolCall={toolCall} />
+        ) : (
         <div className="overflow-hidden rounded-md border border-border bg-muted/30">
           <div className="truncate border-b border-border px-3 py-1.5 font-mono text-xs">
             <span className="text-muted-foreground">$ </span>
@@ -194,18 +223,19 @@ function ToolRow({ toolCall }: { toolCall: ToolCall }) {
             className="max-h-64 overflow-y-auto"
           />
         </div>
+        )}
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );
 }
 
-function ToolGroup({ tools }: { tools: ToolCall[] }) {
+function ToolGroup({ tools }: { tools: ChatToolCall[] }) {
   if (tools.length === 1) return <ToolRow toolCall={tools[0]} />;
 
   const running = tools.filter((tool) => !tool.result);
   const counts = new Map<string, number>();
   for (const tool of tools) {
-    const { groupKey } = describeToolCall({ ...tool, result: tool.result ?? { success: true } });
+    const { groupKey } = describeToolCall(tool);
     counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
   }
   const summary = [...counts]

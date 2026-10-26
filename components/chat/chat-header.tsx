@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useChatStore } from "@/lib/chat/chat-store";
+import { useShallow } from "zustand/react/shallow";
 import { useChat } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
 import {
@@ -44,7 +45,8 @@ export function ChatHeader() {
     setOpen,
     setMinimized,
     setShowHistory,
-    currentSession,
+    currentSessionId,
+    currentSessionTitle,
     updateSessionTitle,
     layoutMode,
     setLayoutMode,
@@ -53,13 +55,20 @@ export function ChatHeader() {
     accountId,
     accountEpoch,
     isAccountReady,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({ setOpen: state.setOpen, setMinimized: state.setMinimized, setShowHistory: state.setShowHistory, currentSessionId: state.currentSession?.id ?? null, currentSessionTitle: state.currentSession?.title ?? null, updateSessionTitle: state.updateSessionTitle, layoutMode: state.layoutMode, setLayoutMode: state.setLayoutMode, upsertSessionFromServer: state.upsertSessionFromServer, setCurrentSessionIdFromServer: state.setCurrentSessionIdFromServer, accountId: state.accountId, accountEpoch: state.accountEpoch, isAccountReady: state.isAccountReady }))
+  );
   const { clearConversation, isLoading } = useChat();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  // Selecting id and title (not the session object) keeps streamed tokens
+  // from re-rendering the header.
+  const currentSession = currentSessionId
+    ? { id: currentSessionId, title: currentSessionTitle ?? "New Chat" }
+    : null;
 
   const handleClose = () => {
     setOpen(false);
